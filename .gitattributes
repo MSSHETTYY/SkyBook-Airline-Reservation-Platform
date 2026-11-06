@@ -1,0 +1,11 @@
+# Normalise line endings in the repository; shell scripts must stay LF even on Windows checkouts,
+# otherwise containers fail with "bad interpreter: /bin/bash^M".
+* text=auto eol=lf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+*.jar binary
+*.png binary
+*.jpg binary
+*.p12 binary

@@ -1,0 +1,13 @@
+# Copy to %UserProfile%\.wslconfig, then run `wsl --shutdown` and restart Docker Desktop.
+#
+# Caps the WSL2 VM that runs all containers so Windows, the IDE and the Spring Boot services
+# started from the IDE keep enough memory on a 7.8 GB machine. Swap absorbs short spikes
+# (e.g. Oracle start-up) instead of the OOM killer.
+[wsl2]
+memory=4GB
+processors=4
+swap=8GB
+
+[experimental]
+# Return memory freed inside the VM back to Windows.
+autoMemoryReclaim=gradual

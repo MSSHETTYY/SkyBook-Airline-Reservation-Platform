@@ -1,0 +1,58 @@
+# Pipeline skeleton (Phase 0). Stages are added as the platform grows; see ADR-0004:
+#   build+unit -> integration (Testcontainers) -> SonarQube -> Trivy/OWASP -> image push (GHCR) -> Helm deploy
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: Build, unit tests, Checkstyle, coverage gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      # `verify` runs Checkstyle (validate), unit tests (Surefire), integration tests (Failsafe),
+      # ArchUnit rules and the JaCoCo coverage gate.
+      - name: Maven verify
+        run: ./mvnw -B -ntp verify
+
+      - name: Upload test and coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports
+          path: |
+            **/target/surefire-reports/
+            **/target/failsafe-reports/
+            **/target/site/jacoco/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  compose-lint:
+    name: Validate docker compose
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: docker compose config (all profiles)
+        run: >-
+          docker compose
+          --profile core --profile messaging --profile auth --profile notification --profile partners
+          config --quiet

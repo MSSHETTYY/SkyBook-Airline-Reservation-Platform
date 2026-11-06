@@ -1,0 +1,252 @@
+# SkyBook local infrastructure.
+#
+# Sized for a 7.8 GB laptop running Docker Desktop/WSL2 capped at ~4 GB (see docs/dev/wslconfig.example
+# and docs/adr/0003-local-runtime-footprint.md). Run ONE or TWO profiles at a time, e.g.:
+#
+#   docker compose --profile core up -d                 # Oracle + MariaDB + Redis       (~2.6 GB)
+#   docker compose --profile messaging up -d            # Kafka + Solace                 (~2.5 GB)
+#   docker compose --profile auth --profile partners up -d
+#
+# Credentials below are development-only defaults; override them in .env (see .env.example).
+# Production secrets come from Vault (Phase 2), never from this file.
+
+name: skybook
+
+x-defaults: &defaults
+  restart: unless-stopped
+  networks: [skybook]
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "2"
+
+services:
+
+  # ---------------------------------------------------------------- core ----
+  oracle:
+    <<: *defaults
+    image: gvenzl/oracle-free:23-slim-faststart
+    profiles: [core]
+    mem_limit: 2g
+    environment:
+      ORACLE_PASSWORD: ${ORACLE_ADMIN_PASSWORD:-oracle_admin_dev}
+      # Creates the schema owner for inventory-service inside the FREEPDB1 pluggable database.
+      APP_USER: inventory
+      APP_USER_PASSWORD: ${INVENTORY_DB_PASSWORD:-inventory_dev}
+    ports: ["1521:1521"]
+    volumes: [oracle-data:/opt/oracle/oradata]
+    healthcheck:
+      test: ["CMD", "healthcheck.sh"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  mariadb:
+    <<: *defaults
+    image: mariadb:11.8.9
+    profiles: [core]
+    mem_limit: 384m
+    # One server, one schema + one user per service (see ADR-0003): isolation without a second JVM-sized footprint.
+    command:
+      - --innodb-buffer-pool-size=128M
+      - --max-connections=100
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --transaction-isolation=READ-COMMITTED
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-mariadb_root_dev}
+      BOOKING_DB_PASSWORD: ${BOOKING_DB_PASSWORD:-booking_dev}
+      PAYMENT_DB_PASSWORD: ${PAYMENT_DB_PASSWORD:-payment_dev}
+    ports: ["3306:3306"]
+    volumes:
+      - mariadb-data:/var/lib/mysql
+      - ./infra/mariadb/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  redis:
+    <<: *defaults
+    image: redis:8.10.3-alpine
+    profiles: [core]
+    mem_limit: 128m
+    # Pure cache / read model / rate-limit counters: no persistence, LRU eviction under memory pressure.
+    command:
+      - redis-server
+      - --requirepass
+      - ${REDIS_PASSWORD:-redis_dev}
+      - --maxmemory
+      - 64mb
+      - --maxmemory-policy
+      - allkeys-lru
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+    environment:
+      REDISCLI_AUTH: ${REDIS_PASSWORD:-redis_dev}
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # ----------------------------------------------------------- messaging ----
+  kafka:
+    <<: *defaults
+    image: apache/kafka:4.1.2
+    profiles: [messaging]
+    mem_limit: 1g
+    environment:
+      # Single-node KRaft (combined broker + controller). No ZooKeeper.
+      KAFKA_NODE_ID: 1
+      CLUSTER_ID: 9mvtcA6CRL25CXPz6cyQdg # base64url UUID, as produced by kafka-storage.sh random-uuid
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      # INTERNAL for containers, EXTERNAL for services started from the IDE on the host.
+      KAFKA_LISTENERS: INTERNAL://:29092,EXTERNAL://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      # Topics (incl. DLTs) are declared explicitly by the owning service - typos must fail, not create topics.
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_NUM_PARTITIONS: 3
+      KAFKA_HEAP_OPTS: -Xms256m -Xmx512m
+    ports: ["9092:9092"]
+    # No volume on purpose: dev topics are recreated by the services; avoids root-owned volume
+    # permission issues with the non-root apache/kafka image.
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  solace:
+    <<: *defaults
+    image: solace/solace-pubsub-standard:10.26.9
+    profiles: [messaging]
+    mem_limit: 1536m
+    shm_size: 1g
+    ulimits:
+      core: -1
+      nofile:
+        soft: 2448
+        hard: 6592
+    environment:
+      username_admin_globalaccesslevel: admin
+      username_admin_password: ${SOLACE_ADMIN_PASSWORD:-solace_admin_dev}
+      # Smallest supported scaling tier keeps the broker around 1 GB.
+      system_scaling_maxconnectioncount: "100"
+    ports:
+      - "8190:8080"   # PubSub+ Manager / SEMP
+      - "55555:55555" # SMF - used by the Solace JMS API
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:5550/health-check/guaranteed-active"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 90s
+
+  # ---------------------------------------------------------------- auth ----
+  keycloak:
+    <<: *defaults
+    image: quay.io/keycloak/keycloak:26.8.2
+    profiles: [auth]
+    mem_limit: 768m
+    command: ["start-dev"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-keycloak_admin_dev}
+      KC_HEALTH_ENABLED: "true"
+      KC_HTTP_PORT: "8080"
+      JAVA_OPTS_KC_HEAP: -XX:MaxRAMPercentage=65
+    ports: ["8180:8080"]
+    volumes: [keycloak-data:/opt/keycloak/data]
+    healthcheck:
+      # The image ships without curl; use bash's /dev/tcp against the management port.
+      test:
+        - CMD
+        - bash
+        - -c
+        - >-
+          exec 3<>/dev/tcp/127.0.0.1/9000 &&
+          printf 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 &&
+          grep -q '"status": "UP"' <&3
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+
+  # -------------------------------------------------------- notification ----
+  mongodb:
+    <<: *defaults
+    image: mongo:8.0.34
+    profiles: [notification]
+    mem_limit: 512m
+    command: ["--wiredTigerCacheSizeGB", "0.25"]
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-mongo_root_dev}
+    ports: ["27017:27017"]
+    volumes: [mongo-data:/data/db]
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  mailpit:
+    <<: *defaults
+    image: axllent/mailpit:v1.33.0
+    profiles: [notification]
+    mem_limit: 64m
+    environment:
+      MP_MAX_MESSAGES: "500"
+    ports:
+      - "8025:8025" # web UI
+      - "1025:1025" # SMTP
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # ------------------------------------------------------------ partners ----
+  wiremock:
+    <<: *defaults
+    image: wiremock/wiremock:3.13.2-alpine
+    profiles: [partners]
+    mem_limit: 256m
+    command: ["--global-response-templating", "--disable-banner"]
+    environment:
+      JAVA_OPTS: -Xmx160m
+    ports: ["8095:8080"]
+    volumes: [./mock-partners/wiremock:/home/wiremock:ro]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/__admin/health > /dev/null"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+networks:
+  skybook:
+    name: skybook
+
+volumes:
+  oracle-data:
+  mariadb-data:
+  mongo-data:
+  keycloak-data:

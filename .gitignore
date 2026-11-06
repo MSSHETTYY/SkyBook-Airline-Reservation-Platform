@@ -1,0 +1,31 @@
+# Build output
+target/
+!.mvn/wrapper/maven-wrapper.jar
+node_modules/
+dist/
+coverage/
+playwright-report/
+test-results/
+
+# IDE
+.idea/
+*.iml
+.vscode/*
+!.vscode/extensions.json
+.classpath
+.project
+.settings/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local configuration and secrets - never commit
+.env
+*.local.yaml
+*.pem
+*.key
+*.p12
+*.jks
+!**/src/test/resources/**/*.p12
