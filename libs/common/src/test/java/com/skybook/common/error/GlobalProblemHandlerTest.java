@@ -29,6 +29,7 @@ import jakarta.validation.constraints.Positive;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
@@ -73,6 +74,11 @@ class GlobalProblemHandlerTest {
         @GetMapping("/server-side-code")
         String serverSideCode() {
             throw new SkyBookException(CommonErrorCode.INTERNAL_ERROR, "Downstream unavailable");
+        }
+
+        @GetMapping("/stale")
+        String stale() {
+            throw new OptimisticLockingFailureException("Booking BK-1 was updated concurrently");
         }
 
         @GetMapping("/unexpected")
@@ -126,6 +132,13 @@ class GlobalProblemHandlerTest {
                 .andExpect(status().isInternalServerError())
                 .andExpect(jsonPath("$.code").value("INTERNAL_ERROR"))
                 .andExpect(jsonPath("$.detail").value("Downstream unavailable"));
+    }
+
+    @Test
+    void optimisticLockFailureBecomesConflict() throws Exception {
+        mockMvc.perform(get("/stale"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CONCURRENT_MODIFICATION"));
     }
 
     @Test

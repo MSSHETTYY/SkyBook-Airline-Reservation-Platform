@@ -1,0 +1,88 @@
+server:
+  port: 8082
+  shutdown: graceful
+
+spring:
+  application:
+    name: booking-service
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    url: ${BOOKING_DB_URL:jdbc:mariadb://localhost:3306/booking}
+    username: ${BOOKING_DB_USER:booking_app}
+    password: ${BOOKING_DB_PASSWORD:booking_dev}
+    hikari:
+      maximum-pool-size: 10
+      connection-timeout: 5000
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8180/realms/skybook}
+      client:
+        registration:
+          # booking-service's own identity for calls to inventory/payment (client credentials grant).
+          skybook-services:
+            provider: keycloak
+            client-id: booking-service
+            client-secret: ${BOOKING_CLIENT_SECRET:booking-service-dev-secret}
+            authorization-grant-type: client_credentials
+        provider:
+          keycloak:
+            # Explicit token URI (no OIDC discovery) so start-up does not depend on Keycloak being up.
+            token-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8180/realms/skybook}/protocol/openid-connect/token
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,circuitbreakers
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  health:
+    circuitbreakers:
+      enabled: true
+
+skybook:
+  booking:
+    expiry-interval: PT30S
+    inventory:
+      base-url: ${INVENTORY_BASE_URL:http://localhost:8081}
+      connect-timeout: 2s
+      read-timeout: 3s
+      oauth2-registration-id: skybook-services
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      inventory:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 20
+        minimum-number-of-calls: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 3
+        record-exceptions:
+          - com.skybook.booking.adapter.out.inventory.InventoryUnavailableException
+  retry:
+    instances:
+      inventory:
+        max-attempts: 3
+        wait-duration: 200ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        retry-exceptions:
+          - com.skybook.booking.adapter.out.inventory.InventoryUnavailableException

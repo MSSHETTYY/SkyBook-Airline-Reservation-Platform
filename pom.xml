@@ -24,6 +24,8 @@
 
     <modules>
         <module>libs/common</module>
+        <module>services/inventory-service</module>
+        <module>services/booking-service</module>
     </modules>
 
     <properties>
@@ -33,6 +35,13 @@
 
         <spring-cloud.version>2025.1.4</spring-cloud.version>
         <archunit.version>1.5.1</archunit.version>
+        <openapi-generator.version>7.27.0</openapi-generator.version>
+        <resilience4j.version>2.4.0</resilience4j.version>
+        <stripe.version>34.1.0</stripe.version>
+        <pact.version>4.7.7</pact.version>
+        <wiremock.version>3.13.2</wiremock.version>
+        <rest-assured.version>6.3.0</rest-assured.version>
+        <sol-jms.version>10.30.2</sol-jms.version>
 
         <checkstyle.version>14.4.0</checkstyle.version>
         <maven-checkstyle-plugin.version>3.6.0</maven-checkstyle-plugin.version>
@@ -56,6 +65,59 @@
                 <groupId>com.skybook</groupId>
                 <artifactId>skybook-common</artifactId>
                 <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.skybook</groupId>
+                <artifactId>skybook-common</artifactId>
+                <version>${project.version}</version>
+                <type>test-jar</type>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>io.github.resilience4j</groupId>
+                <artifactId>resilience4j-bom</artifactId>
+                <version>${resilience4j.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>io.github.resilience4j</groupId>
+                <artifactId>resilience4j-spring-boot4</artifactId>
+                <version>${resilience4j.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.stripe</groupId>
+                <artifactId>stripe-java</artifactId>
+                <version>${stripe.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.solacesystems</groupId>
+                <artifactId>sol-jms</artifactId>
+                <version>${sol-jms.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.wiremock</groupId>
+                <artifactId>wiremock-standalone</artifactId>
+                <version>${wiremock.version}</version>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>io.rest-assured</groupId>
+                <artifactId>rest-assured</artifactId>
+                <version>${rest-assured.version}</version>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>au.com.dius.pact.consumer</groupId>
+                <artifactId>junit5</artifactId>
+                <version>${pact.version}</version>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>au.com.dius.pact.provider</groupId>
+                <artifactId>junit5spring</artifactId>
+                <version>${pact.version}</version>
+                <scope>test</scope>
             </dependency>
             <dependency>
                 <groupId>com.tngtech.archunit</groupId>
@@ -93,6 +155,51 @@
                     <groupId>org.jacoco</groupId>
                     <artifactId>jacoco-maven-plugin</artifactId>
                     <version>${jacoco.version}</version>
+                    <configuration>
+                        <!-- Coverage is measured on code we write: generated OpenAPI code and entry points are excluded. -->
+                        <excludes>
+                            <exclude>**/api/v*/**</exclude>
+                            <exclude>**/web/api/**</exclude>
+                            <exclude>**/adapter/out/*/model/**</exclude>
+                            <exclude>**/*Application.class</exclude>
+                        </excludes>
+                    </configuration>
+                </plugin>
+                <!--
+                    API-first: each service generates its Spring MVC interfaces and DTOs from the spec in
+                    /api. Controllers implement the generated interfaces, so the code cannot drift from
+                    the published contract without failing compilation.
+                -->
+                <plugin>
+                    <groupId>org.openapitools</groupId>
+                    <artifactId>openapi-generator-maven-plugin</artifactId>
+                    <version>${openapi-generator.version}</version>
+                    <configuration>
+                        <generatorName>spring</generatorName>
+                        <library>spring-boot</library>
+                        <generateApiTests>false</generateApiTests>
+                        <generateModelTests>false</generateModelTests>
+                        <generateApiDocumentation>false</generateApiDocumentation>
+                        <generateModelDocumentation>false</generateModelDocumentation>
+                        <generateSupportingFiles>false</generateSupportingFiles>
+                        <configOptions>
+                            <interfaceOnly>true</interfaceOnly>
+                            <useSpringBoot3>true</useSpringBoot3>
+                            <useJakartaEe>true</useJakartaEe>
+                            <useTags>true</useTags>
+                            <skipDefaultInterface>true</skipDefaultInterface>
+                            <openApiNullable>false</openApiNullable>
+                            <documentationProvider>none</documentationProvider>
+                            <annotationLibrary>none</annotationLibrary>
+                            <useBeanValidation>true</useBeanValidation>
+                            <dateLibrary>java8</dateLibrary>
+                            <requestMappingMode>none</requestMappingMode>
+                            <hideGenerationTimestamp>true</hideGenerationTimestamp>
+                            <generateJsonIncludeAnnotations>false</generateJsonIncludeAnnotations>
+                            <generateJsonSetterNullsAnnotations>false</generateJsonSetterNullsAnnotations>
+                            <sourceFolder>src/gen/java</sourceFolder>
+                        </configOptions>
+                    </configuration>
                 </plugin>
             </plugins>
         </pluginManagement>

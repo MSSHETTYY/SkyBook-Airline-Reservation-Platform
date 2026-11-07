@@ -1,0 +1,25 @@
+# Fast tests: H2 in MariaDB mode runs the real Flyway migrations; inventory is stubbed with WireMock;
+# JWTs are issued and verified with a test key pair (TestJwtIssuer).
+spring:
+  datasource:
+    url: jdbc:h2:mem:booking;MODE=MariaDB;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1
+    username: sa
+    password: ""
+  jpa:
+    hibernate:
+      # H2 type names differ from MariaDB; schema validation runs against real MariaDB in *IT tests.
+      ddl-auto: none
+
+skybook:
+  scheduling:
+    enabled: false
+  booking:
+    inventory:
+      oauth2-registration-id: ""
+      read-timeout: 1s
+
+resilience4j:
+  retry:
+    instances:
+      inventory:
+        wait-duration: 10ms

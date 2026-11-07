@@ -59,7 +59,7 @@ flowchart LR
 |--------------------|---------------------------------------------------------------------------------------|
 | Consistency        | Database per service, an orchestrated saga in booking-service, a transactional outbox |
 | Seat allocation    | Decided only by inventory-service against Oracle, using optimistic locking and expiring holds |
-| Read scaling       | CQRS: availability search is served from a Redis read model kept up to date by events |
+| Read scaling       | Seat maps and availability come from a Redis cache-aside read model, evicted after every committed change |
 | Errors             | RFC 9457 `application/problem+json` with a stable `code` and a `correlationId`        |
 | Traceability       | `X-Correlation-Id` on every request, log line (MDC) and event envelope                |
 
@@ -67,18 +67,28 @@ Decisions are recorded in [docs/adr](docs/adr):
 [0001 architecture style](docs/adr/0001-architecture-style.md) ·
 [0002 platform versions](docs/adr/0002-platform-versions.md) ·
 [0003 local footprint](docs/adr/0003-local-runtime-footprint.md) ·
-[0004 CI platform](docs/adr/0004-ci-platform.md)
+[0004 CI platform](docs/adr/0004-ci-platform.md) ·
+[0005 hexagonal booking](docs/adr/0005-hexagonal-booking-service.md) ·
+[0006 seat concurrency](docs/adr/0006-seat-allocation-concurrency.md) ·
+[0007 idempotency](docs/adr/0007-idempotency.md) ·
+[0008 API security](docs/adr/0008-api-security-model.md)
 
 ## Repository layout
 
 ```
 skybook/
 ├─ pom.xml               Parent POM: Boot 4.0 and Cloud 2025.1 BOMs, Checkstyle, JaCoCo gate, enforcer
+├─ api/                  OpenAPI 3 specs (source of truth for server interfaces and clients)
 ├─ libs/common/          Shared technical building blocks (no business logic)
 │   ├─ error/            ErrorCode, SkyBookException, GlobalProblemHandler (RFC 9457)
 │   ├─ web/              CorrelationIdFilter, CorrelationId
 │   ├─ event/            EventEnvelope<T>, EventTypes (framework-free)
+│   ├─ money/            Money value type (framework-free)
+│   ├─ security/         Keycloak role mapping, API security baseline, Caller
 │   └─ autoconfigure/    Spring Boot auto-configuration for servlet services
+├─ services/
+│   ├─ inventory-service/  Flights, seats, holds, pricing (layered; Oracle + Redis)
+│   └─ booking-service/    Booking lifecycle (hexagonal; MariaDB)
 ├─ mock-partners/        WireMock stubs for GDS, CRM and loyalty
 ├─ infra/                Container init scripts
 ├─ config/checkstyle/    Code style rules
@@ -133,7 +143,7 @@ The application services will use ports 8081-8085.
 | Phase | Scope                                                                                      | Status  |
 |-------|--------------------------------------------------------------------------------------------|---------|
 | 0     | Monorepo, parent POM, common library, compose infrastructure, CI skeleton, ADRs            | Done    |
-| 1     | OpenAPI specs, inventory-service, booking-service (hexagonal), concurrency proof           | Planned |
+| 1     | OpenAPI specs, inventory-service, booking-service (hexagonal), concurrency proof           | Done    |
 | 2     | Keycloak, api-gateway, RBAC, mTLS, encryption of personal data at rest, Vault              | Planned |
 | 3     | payment-service (Stripe), saga with compensations, outbox, DLTs, Resilience4j, Pact        | Planned |
 | 4     | notification-service (Solace JMS, Mailpit, MongoDB audit trail)                            | Planned |

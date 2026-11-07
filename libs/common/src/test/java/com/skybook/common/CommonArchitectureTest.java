@@ -18,6 +18,12 @@ class CommonArchitectureTest {
             .that().resideInAPackage("..common.event..")
             .should().onlyDependOnClassesThat().resideInAnyPackage("java..", "..common.event..");
 
+    /** Money is a generic value type; like events it must not drag a framework into consumers. */
+    @ArchTest
+    static final ArchRule MONEY_DEPENDS_ONLY_ON_THE_JDK = classes()
+            .that().resideInAPackage("..common.money..")
+            .should().onlyDependOnClassesThat().resideInAnyPackage("java..", "..common.money..");
+
     /** The error model must not know about transport details such as servlet filters. */
     @ArchTest
     static final ArchRule ERROR_MODEL_IS_INDEPENDENT_OF_AUTOCONFIGURATION = noClasses()

@@ -1,0 +1,238 @@
+openapi: 3.0.3
+info:
+  title: SkyBook Booking API
+  version: 1.0.0
+  description: |
+    Booking lifecycle: create a booking (seats are held for 15 minutes), pay, receive a ticket,
+    change the date or cancel. booking-service orchestrates the saga across inventory, payment and
+    the GDS.
+
+    * `POST` operations require an `Idempotency-Key` header. Keys are scoped to the caller.
+    * Errors are returned as RFC 9457 `application/problem+json` documents with a stable `code`.
+servers:
+  - url: /
+tags:
+  - name: Bookings
+    description: Customer bookings
+  - name: AdminBookings
+    description: Booking servicing for agents and admins
+
+paths:
+  /api/v1/bookings:
+    post:
+      tags: [Bookings]
+      operationId: createBooking
+      summary: Create a booking; holds the requested seats for 15 minutes
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateBookingRequest' }
+      responses:
+        '201':
+          description: Booking created, awaiting payment
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Booking' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '409':
+          description: A requested seat is no longer available (code SEAT_UNAVAILABLE)
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+        '503': { $ref: '#/components/responses/Problem' }
+    get:
+      tags: [Bookings]
+      operationId: listMyBookings
+      summary: List the caller's bookings, most recent first
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: A page of bookings
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BookingPage' }
+
+  /api/v1/bookings/{bookingReference}:
+    get:
+      tags: [Bookings]
+      operationId: getBooking
+      parameters:
+        - $ref: '#/components/parameters/BookingReference'
+      responses:
+        '200':
+          description: The booking
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Booking' }
+        '404': { $ref: '#/components/responses/Problem' }
+
+  /api/v1/admin/bookings:
+    get:
+      tags: [AdminBookings]
+      operationId: searchBookings
+      summary: Search all bookings (agents and admins)
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema: { $ref: '#/components/schemas/BookingStatus' }
+        - name: flightId
+          in: query
+          required: false
+          schema: { type: integer, format: int64 }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: A page of bookings
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BookingPage' }
+
+components:
+  parameters:
+    BookingReference:
+      name: bookingReference
+      in: path
+      required: true
+      schema: { type: string, pattern: '^[A-Z2-9]{6}$' }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Client-generated unique key (e.g. a UUID) that makes retries safe
+      schema: { type: string, minLength: 8, maxLength: 64, pattern: '^[A-Za-z0-9._:-]+$' }
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 0, default: 0 }
+    Size:
+      name: size
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+
+  responses:
+    Problem:
+      description: Error (RFC 9457)
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+  schemas:
+    BookingStatus:
+      type: string
+      description: |
+        PENDING_PAYMENT - seats held, waiting for payment;
+        PAID - payment received, ticketing in progress;
+        CONFIRMED - ticketed;
+        CHANGE_PENDING_PAYMENT - date change awaiting payment of the fare difference;
+        CANCELLATION_PENDING - refund in progress;
+        CANCELLED, EXPIRED (not paid in time), FAILED (could not be ticketed, refunded)
+      enum: [PENDING_PAYMENT, PAID, CONFIRMED, CHANGE_PENDING_PAYMENT, CANCELLATION_PENDING, CANCELLED, EXPIRED,
+             FAILED]
+
+    Money:
+      type: object
+      required: [amount, currency]
+      properties:
+        amount: { type: number, example: 249.50 }
+        currency: { type: string, pattern: '^[A-Z]{3}$', example: USD }
+
+    PassengerRequest:
+      type: object
+      required: [firstName, lastName, dateOfBirth, seatNumber]
+      properties:
+        firstName: { type: string, minLength: 1, maxLength: 50 }
+        lastName: { type: string, minLength: 1, maxLength: 50 }
+        dateOfBirth: { type: string, format: date }
+        seatNumber: { type: string, pattern: '^[0-9]{1,2}[A-K]$' }
+
+    CreateBookingRequest:
+      type: object
+      required: [flightId, contactEmail, passengers]
+      properties:
+        flightId: { type: integer, format: int64, minimum: 1 }
+        contactEmail: { type: string, format: email, maxLength: 254 }
+        passengers:
+          type: array
+          minItems: 1
+          maxItems: 9
+          items: { $ref: '#/components/schemas/PassengerRequest' }
+
+    FlightSnapshot:
+      type: object
+      required: [flightId, flightNumber, origin, destination, departureTime]
+      properties:
+        flightId: { type: integer, format: int64 }
+        flightNumber: { type: string }
+        origin: { type: string }
+        destination: { type: string }
+        departureTime: { type: string, format: date-time }
+
+    Passenger:
+      type: object
+      required: [firstName, lastName, seatNumber]
+      properties:
+        firstName: { type: string }
+        lastName: { type: string }
+        seatNumber: { type: string }
+        ticketNumber: { type: string }
+
+    PaymentInfo:
+      type: object
+      required: [paymentId, status]
+      properties:
+        paymentId: { type: string }
+        status: { type: string }
+        clientSecret:
+          type: string
+          description: Stripe PaymentIntent client secret for Stripe Elements; only present while payment is due
+
+    Booking:
+      type: object
+      required: [bookingReference, status, flight, passengers, totalPrice, contactEmail, createdAt]
+      properties:
+        bookingReference: { type: string, example: K7QX2M }
+        status: { $ref: '#/components/schemas/BookingStatus' }
+        flight: { $ref: '#/components/schemas/FlightSnapshot' }
+        passengers:
+          type: array
+          items: { $ref: '#/components/schemas/Passenger' }
+        totalPrice: { $ref: '#/components/schemas/Money' }
+        contactEmail: { type: string }
+        holdExpiresAt:
+          type: string
+          format: date-time
+          description: Payment deadline; present while status is PENDING_PAYMENT
+        payment: { $ref: '#/components/schemas/PaymentInfo' }
+        createdAt: { type: string, format: date-time }
+
+    BookingPage:
+      type: object
+      required: [items, page, size, totalElements]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Booking' }
+        page: { type: integer }
+        size: { type: integer }
+        totalElements: { type: integer, format: int64 }
+
+    Problem:
+      type: object
+      description: RFC 9457 problem details with SkyBook extensions
+      properties:
+        type: { type: string, format: uri }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string, format: uri }
+        code: { type: string }
+        correlationId: { type: string }
+        timestamp: { type: string, format: date-time }

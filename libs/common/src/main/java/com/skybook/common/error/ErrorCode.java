@@ -20,8 +20,15 @@ public interface ErrorCode {
     /** Upper snake case identifier, e.g. {@code SEAT_UNAVAILABLE}. Part of the public API contract. */
     String code();
 
-    /** HTTP status the problem is reported with. */
-    HttpStatus httpStatus();
+    /**
+     * HTTP status code the problem is reported with. A plain {@code int} so that implementations in
+     * framework-free domain code do not need to import Spring.
+     */
+    int status();
+
+    default HttpStatus httpStatus() {
+        return HttpStatus.valueOf(status());
+    }
 
     /** Short, human-readable summary that does not change between occurrences. */
     String title();

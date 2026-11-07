@@ -1,0 +1,446 @@
+openapi: 3.0.3
+info:
+  title: SkyBook Inventory API
+  version: 1.0.0
+  description: |
+    Flights, seat maps, seat holds and pricing. inventory-service is the single source of truth for
+    seat allocation: a seat can only be booked through a hold created here.
+
+    * Seat holds expire 15 minutes after creation unless confirmed.
+    * `POST` operations that create resources require an `Idempotency-Key` header; retrying with the
+      same key and payload returns the original result, reusing it with a different payload fails.
+    * Errors are returned as RFC 9457 `application/problem+json` documents with a stable `code`.
+servers:
+  - url: /
+tags:
+  - name: Flights
+    description: Public flight search and seat maps
+  - name: Holds
+    description: Seat holds (service-to-service, used by booking-service)
+  - name: SeatReleases
+    description: Release of booked seats after cancellation or date change
+  - name: AdminFlights
+    description: Flight and inventory management for agents and admins
+
+paths:
+  /api/v1/flights:
+    get:
+      tags: [Flights]
+      operationId: searchFlights
+      summary: Search scheduled flights for a route and departure date
+      parameters:
+        - $ref: '#/components/parameters/Origin'
+        - $ref: '#/components/parameters/Destination'
+        - name: date
+          in: query
+          required: true
+          description: Departure date (UTC)
+          schema: { type: string, format: date }
+        - name: passengers
+          in: query
+          required: false
+          description: Only return flights with at least this many available seats
+          schema: { type: integer, minimum: 1, maximum: 9, default: 1 }
+      responses:
+        '200':
+          description: Matching flights ordered by departure time
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/FlightSummary' }
+        '400': { $ref: '#/components/responses/Problem' }
+
+  /api/v1/flights/{flightId}:
+    get:
+      tags: [Flights]
+      operationId: getFlight
+      summary: Get a flight with its current availability
+      parameters:
+        - $ref: '#/components/parameters/FlightId'
+      responses:
+        '200':
+          description: The flight
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FlightSummary' }
+        '404': { $ref: '#/components/responses/Problem' }
+
+  /api/v1/flights/{flightId}/seats:
+    get:
+      tags: [Flights]
+      operationId: getSeatMap
+      summary: Get the seat map with real-time availability and prices
+      parameters:
+        - $ref: '#/components/parameters/FlightId'
+      responses:
+        '200':
+          description: Seat map
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SeatMap' }
+        '404': { $ref: '#/components/responses/Problem' }
+
+  /api/v1/flights/{flightId}/holds:
+    post:
+      tags: [Holds]
+      operationId: holdSeats
+      summary: Hold seats for 15 minutes and lock in their price
+      parameters:
+        - $ref: '#/components/parameters/FlightId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HoldSeatsRequest' }
+      responses:
+        '201':
+          description: Seats held
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SeatHold' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409':
+          description: One or more seats are no longer available (code SEAT_UNAVAILABLE)
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+
+  /api/v1/holds/{holdId}:
+    get:
+      tags: [Holds]
+      operationId: getHold
+      parameters:
+        - $ref: '#/components/parameters/HoldId'
+      responses:
+        '200':
+          description: The hold
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SeatHold' }
+        '404': { $ref: '#/components/responses/Problem' }
+    delete:
+      tags: [Holds]
+      operationId: releaseHold
+      summary: Release a hold (idempotent)
+      parameters:
+        - $ref: '#/components/parameters/HoldId'
+      responses:
+        '204': { description: 'Hold released (or it was already released or expired)' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+
+  /api/v1/holds/{holdId}/confirmation:
+    post:
+      tags: [Holds]
+      operationId: confirmHold
+      summary: Turn held seats into booked seats (idempotent for the same booking reference)
+      parameters:
+        - $ref: '#/components/parameters/HoldId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ConfirmHoldRequest' }
+      responses:
+        '200':
+          description: Hold confirmed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SeatHold' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409':
+          description: The hold expired and its seats were taken (code HOLD_EXPIRED) or it was released
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /api/v1/flights/{flightId}/seat-releases:
+    post:
+      tags: [SeatReleases]
+      operationId: releaseBookedSeats
+      summary: Return all seats booked under a booking reference to sale (idempotent)
+      parameters:
+        - $ref: '#/components/parameters/FlightId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SeatReleaseRequest' }
+      responses:
+        '200':
+          description: Seats released
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SeatReleaseResult' }
+        '404': { $ref: '#/components/responses/Problem' }
+
+  /api/v1/admin/flights:
+    get:
+      tags: [AdminFlights]
+      operationId: listFlights
+      summary: List flights, newest departure first
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 0, default: 0 }
+        - name: size
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200':
+          description: A page of flights
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FlightPage' }
+    post:
+      tags: [AdminFlights]
+      operationId: createFlight
+      summary: Schedule a flight and generate its seat inventory
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateFlightRequest' }
+      responses:
+        '201':
+          description: Flight created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FlightSummary' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+
+  /api/v1/admin/flights/{flightId}/cancellation:
+    post:
+      tags: [AdminFlights]
+      operationId: cancelFlight
+      summary: Cancel a flight; no new holds are accepted
+      parameters:
+        - $ref: '#/components/parameters/FlightId'
+      responses:
+        '200':
+          description: Flight cancelled
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FlightSummary' }
+        '404': { $ref: '#/components/responses/Problem' }
+
+components:
+  parameters:
+    FlightId:
+      name: flightId
+      in: path
+      required: true
+      schema: { type: integer, format: int64, minimum: 1 }
+    HoldId:
+      name: holdId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Origin:
+      name: origin
+      in: query
+      required: true
+      description: IATA airport code
+      schema: { $ref: '#/components/schemas/AirportCode' }
+    Destination:
+      name: destination
+      in: query
+      required: true
+      description: IATA airport code
+      schema: { $ref: '#/components/schemas/AirportCode' }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Client-generated unique key (e.g. a UUID) that makes retries safe
+      schema: { type: string, minLength: 8, maxLength: 64, pattern: '^[A-Za-z0-9._:-]+$' }
+
+  responses:
+    Problem:
+      description: Error (RFC 9457)
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+  schemas:
+    AirportCode:
+      type: string
+      pattern: '^[A-Z]{3}$'
+      example: DXB
+
+    CabinClass:
+      type: string
+      enum: [ECONOMY, BUSINESS]
+
+    FlightStatus:
+      type: string
+      enum: [SCHEDULED, CANCELLED]
+
+    HoldStatus:
+      type: string
+      enum: [ACTIVE, CONFIRMED, RELEASED, EXPIRED]
+
+    Money:
+      type: object
+      required: [amount, currency]
+      properties:
+        amount:
+          type: number
+          description: Decimal amount in major units, two fraction digits
+          example: 249.50
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+          example: USD
+
+    Availability:
+      type: object
+      required: [economy, business]
+      properties:
+        economy: { type: integer, minimum: 0 }
+        business: { type: integer, minimum: 0 }
+
+    FlightSummary:
+      type: object
+      required: [flightId, flightNumber, origin, destination, departureTime, arrivalTime, aircraftType, status,
+                 availableSeats, fromPrice]
+      properties:
+        flightId: { type: integer, format: int64 }
+        flightNumber: { type: string, example: SB101 }
+        origin: { $ref: '#/components/schemas/AirportCode' }
+        destination: { $ref: '#/components/schemas/AirportCode' }
+        departureTime: { type: string, format: date-time }
+        arrivalTime: { type: string, format: date-time }
+        aircraftType: { type: string, example: A320 }
+        status: { $ref: '#/components/schemas/FlightStatus' }
+        availableSeats: { $ref: '#/components/schemas/Availability' }
+        fromPrice: { $ref: '#/components/schemas/Money' }
+
+    FlightPage:
+      type: object
+      required: [items, page, size, totalElements]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/FlightSummary' }
+        page: { type: integer }
+        size: { type: integer }
+        totalElements: { type: integer, format: int64 }
+
+    Seat:
+      type: object
+      required: [seatNumber, cabinClass, available, price]
+      properties:
+        seatNumber: { type: string, example: 12C }
+        cabinClass: { $ref: '#/components/schemas/CabinClass' }
+        available: { type: boolean }
+        price: { $ref: '#/components/schemas/Money' }
+
+    SeatMap:
+      type: object
+      required: [flightId, seats]
+      properties:
+        flightId: { type: integer, format: int64 }
+        seats:
+          type: array
+          items: { $ref: '#/components/schemas/Seat' }
+
+    HoldSeatsRequest:
+      type: object
+      required: [seatNumbers]
+      properties:
+        seatNumbers:
+          type: array
+          minItems: 1
+          maxItems: 9
+          uniqueItems: true
+          items: { type: string, pattern: '^[0-9]{1,2}[A-K]$' }
+
+    HeldSeat:
+      type: object
+      required: [seatNumber, cabinClass, price]
+      properties:
+        seatNumber: { type: string }
+        cabinClass: { $ref: '#/components/schemas/CabinClass' }
+        price: { $ref: '#/components/schemas/Money' }
+
+    SeatHold:
+      type: object
+      required: [holdId, flightId, flightNumber, origin, destination, departureTime, status, seats, totalPrice,
+                 expiresAt]
+      properties:
+        holdId: { type: string, format: uuid }
+        flightId: { type: integer, format: int64 }
+        flightNumber: { type: string }
+        origin: { $ref: '#/components/schemas/AirportCode' }
+        destination: { $ref: '#/components/schemas/AirportCode' }
+        departureTime: { type: string, format: date-time }
+        status: { $ref: '#/components/schemas/HoldStatus' }
+        seats:
+          type: array
+          items: { $ref: '#/components/schemas/HeldSeat' }
+        totalPrice: { $ref: '#/components/schemas/Money' }
+        expiresAt: { type: string, format: date-time }
+        bookingReference: { type: string }
+
+    ConfirmHoldRequest:
+      type: object
+      required: [bookingReference]
+      properties:
+        bookingReference: { type: string, pattern: '^[A-Z2-9]{6}$' }
+
+    SeatReleaseRequest:
+      type: object
+      required: [bookingReference]
+      properties:
+        bookingReference: { type: string, pattern: '^[A-Z2-9]{6}$' }
+
+    SeatReleaseResult:
+      type: object
+      required: [flightId, releasedSeats]
+      properties:
+        flightId: { type: integer, format: int64 }
+        releasedSeats:
+          type: array
+          items: { type: string }
+
+    SeatLayout:
+      type: object
+      required: [rows, seatLetters, businessRows]
+      properties:
+        rows: { type: integer, minimum: 1, maximum: 60 }
+        seatLetters: { type: string, pattern: '^[A-K]{2,10}$', example: ABCDEF }
+        businessRows: { type: integer, minimum: 0, maximum: 20 }
+
+    CreateFlightRequest:
+      type: object
+      required: [flightNumber, origin, destination, departureTime, arrivalTime, aircraftType, baseFare, layout]
+      properties:
+        flightNumber: { type: string, pattern: '^[A-Z0-9]{2}[0-9]{1,4}$', example: SB101 }
+        origin: { $ref: '#/components/schemas/AirportCode' }
+        destination: { $ref: '#/components/schemas/AirportCode' }
+        departureTime: { type: string, format: date-time }
+        arrivalTime: { type: string, format: date-time }
+        aircraftType: { type: string, minLength: 2, maxLength: 16 }
+        baseFare: { $ref: '#/components/schemas/Money' }
+        layout: { $ref: '#/components/schemas/SeatLayout' }
+
+    Problem:
+      type: object
+      description: RFC 9457 problem details with SkyBook extensions
+      properties:
+        type: { type: string, format: uri }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string, format: uri }
+        code: { type: string, description: Stable machine-readable error code }
+        correlationId: { type: string }
+        timestamp: { type: string, format: date-time }

@@ -27,8 +27,8 @@ class ErrorCodeTest {
             }
 
             @Override
-            public HttpStatus httpStatus() {
-                return HttpStatus.CONFLICT;
+            public int status() {
+                return 409;
             }
 
             @Override
@@ -38,6 +38,7 @@ class ErrorCodeTest {
         };
 
         assertThat(seatUnavailable.type()).hasToString("urn:skybook:problem:seat-unavailable");
+        assertThat(seatUnavailable.httpStatus()).isEqualTo(HttpStatus.CONFLICT);
     }
 
     @Test

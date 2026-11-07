@@ -3,14 +3,17 @@ package com.skybook.common.autoconfigure;
 import java.time.Clock;
 
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication.Type;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
 
 import com.skybook.common.error.GlobalProblemHandler;
+import com.skybook.common.security.SecurityProblemHandler;
 import com.skybook.common.web.CorrelationIdFilter;
 
 /**
@@ -46,5 +49,17 @@ public class SkyBookCommonAutoConfiguration {
     @ConditionalOnMissingBean
     GlobalProblemHandler globalProblemHandler(Clock clock) {
         return new GlobalProblemHandler(clock);
+    }
+
+    /** Only when Spring Security is on the classpath (the security dependencies of this library are optional). */
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnClass(name = "org.springframework.security.access.AccessDeniedException")
+    static class SecurityProblems {
+
+        @Bean
+        @ConditionalOnMissingBean
+        SecurityProblemHandler securityProblemHandler(Clock clock) {
+            return new SecurityProblemHandler(clock);
+        }
     }
 }

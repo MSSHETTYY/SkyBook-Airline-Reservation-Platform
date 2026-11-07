@@ -1,0 +1,20 @@
+# Fast tests: H2 in Oracle compatibility mode runs the real Flyway migrations.
+# Testcontainers ITs (*IT) override the datasource with a real Oracle container.
+spring:
+  datasource:
+    url: jdbc:h2:mem:inventory;MODE=Oracle;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=10000
+    username: sa
+    password: ""
+    hikari:
+      maximum-pool-size: 16
+  jpa:
+    hibernate:
+      # H2 reports Oracle NUMBER(19) as NUMERIC, so entity/schema validation is only meaningful against
+      # real Oracle; NoOverbookingOracleIT re-enables it there.
+      ddl-auto: none
+
+skybook:
+  scheduling:
+    enabled: false
+  inventory:
+    cache-enabled: false

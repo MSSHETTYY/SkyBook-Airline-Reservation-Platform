@@ -13,6 +13,7 @@ import jakarta.validation.ConstraintViolationException;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
@@ -73,6 +74,18 @@ public class GlobalProblemHandler extends ResponseEntityExceptionHandler {
                 .map(GlobalProblemHandler::toFieldViolation)
                 .toList();
         return respond(validationProblem(violations), request);
+    }
+
+    /**
+     * A concurrent update won the optimistic-locking race. The client should reload and retry; this is
+     * an expected outcome under contention, not a server fault.
+     */
+    @ExceptionHandler(OptimisticLockingFailureException.class)
+    public ResponseEntity<ProblemDetail> handleOptimisticLock(OptimisticLockingFailureException ex,
+                                                              HttpServletRequest request) {
+        LOG.info("Optimistic locking conflict: {}", ex.getMessage());
+        return respond(problemFor(CommonErrorCode.CONCURRENT_MODIFICATION,
+                "The resource was changed by another request. Reload it and try again."), request);
     }
 
     /**

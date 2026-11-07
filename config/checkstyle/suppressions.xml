@@ -7,4 +7,6 @@
     <suppress files="[\\/]target[\\/]generated-sources[\\/]" checks=".*"/>
     <!-- ArchUnit suites declare rules as static fields; JUnit must be able to instantiate them. -->
     <suppress files="ArchitectureTest\.java$" checks="HideUtilityClassConstructor"/>
+    <!-- Spring Boot entry points need a public constructor for the framework. -->
+    <suppress files="Application\.java$" checks="HideUtilityClassConstructor"/>
 </suppressions>

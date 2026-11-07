@@ -1,0 +1,65 @@
+server:
+  port: 8081
+  shutdown: graceful
+
+spring:
+  application:
+    name: inventory-service
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    url: ${INVENTORY_DB_URL:jdbc:oracle:thin:@localhost:1521/FREEPDB1}
+    username: ${INVENTORY_DB_USER:inventory}
+    password: ${INVENTORY_DB_PASSWORD:inventory_dev}
+    hikari:
+      maximum-pool-size: 10
+      connection-timeout: 5000
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        # Flush UPDATEs in primary-key order: concurrent multi-seat holds take row locks in the same
+        # order and therefore cannot deadlock each other.
+        order_updates: true
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # Keycloak realm; the signing keys are fetched lazily, so start-up does not need Keycloak.
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8180/realms/skybook}
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:redis_dev}
+      timeout: 500ms
+      connect-timeout: 500ms
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  health:
+    # Redis is an optional cache: an outage must not take the service out of the load balancer.
+    redis:
+      enabled: false
+
+skybook:
+  inventory:
+    hold-ttl: PT15M
+    hold-expiry-interval: PT30S
+    expiry-batch-size: 100
+    seat-map-cache-ttl: PT30S
+    cache-enabled: true
