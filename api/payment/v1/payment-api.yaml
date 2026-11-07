@@ -1,0 +1,298 @@
+openapi: 3.0.3
+info:
+  title: SkyBook Payment API
+  version: 1.0.0
+  description: |
+    Payments and refunds through Stripe (test mode). Card data never reaches SkyBook: the browser sends
+    it straight to Stripe through Stripe Elements using the PaymentIntent client secret returned here.
+    Payment outcomes arrive through signature-verified Stripe webhooks and are published as domain events
+    (PaymentCompleted, PaymentFailed, RefundIssued).
+
+    * Payment and refund creation are service-to-service calls (role SERVICE) and require an Idempotency-Key.
+    * Errors are RFC 9457 `application/problem+json` documents with a stable `code`.
+servers:
+  - url: /
+tags:
+  - name: Payments
+  - name: Webhooks
+  - name: AdminPayments
+  - name: Simulation
+    description: Only available when the fake payment provider is active (local development, E2E tests)
+
+paths:
+  /api/v1/payments:
+    post:
+      tags: [Payments]
+      operationId: createPayment
+      summary: Create a payment (Stripe PaymentIntent) for a booking or a date change
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreatePaymentRequest' }
+      responses:
+        '201':
+          description: Payment created; the customer completes it with the client secret
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Payment' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+        '503': { $ref: '#/components/responses/Problem' }
+
+  /api/v1/payments/refunds:
+    post:
+      tags: [Payments]
+      operationId: refundBooking
+      summary: Refund an amount for a booking, spread over its successful payments (newest first)
+      description: |
+        A booking can have several payments (original fare plus a date-change difference). The caller asks
+        for "refund X for booking B"; payment-service decides which payments the money comes back from.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BookingRefundRequest' }
+      responses:
+        '201':
+          description: Refunds created (one per payment used)
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Refund' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+        '503': { $ref: '#/components/responses/Problem' }
+
+  /api/v1/payments/{paymentId}:
+    get:
+      tags: [Payments]
+      operationId: getPayment
+      parameters:
+        - $ref: '#/components/parameters/PaymentId'
+      responses:
+        '200':
+          description: The payment
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Payment' }
+        '404': { $ref: '#/components/responses/Problem' }
+
+  /api/v1/payments/{paymentId}/cancellation:
+    post:
+      tags: [Payments]
+      operationId: cancelPayment
+      summary: Cancel a payment that was never completed (idempotent)
+      parameters:
+        - $ref: '#/components/parameters/PaymentId'
+      responses:
+        '200':
+          description: Payment cancelled (or already cancelled)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Payment' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+
+  /api/v1/payments/{paymentId}/refunds:
+    post:
+      tags: [Payments]
+      operationId: refundPayment
+      summary: Refund part or all of a successful payment
+      parameters:
+        - $ref: '#/components/parameters/PaymentId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RefundRequest' }
+      responses:
+        '201':
+          description: Refund created; RefundIssued is published once it has succeeded
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Refund' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+        '503': { $ref: '#/components/responses/Problem' }
+
+  /api/v1/payments/{paymentId}/simulation:
+    post:
+      tags: [Simulation]
+      operationId: simulatePaymentOutcome
+      summary: Complete or fail a payment without Stripe (only with the fake payment provider, local and E2E)
+      parameters:
+        - $ref: '#/components/parameters/PaymentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SimulationRequest' }
+      responses:
+        '202': { description: 'Signed webhook event dispatched' }
+        '404': { $ref: '#/components/responses/Problem' }
+
+  /api/v1/payments/webhooks/stripe:
+    post:
+      tags: [Webhooks]
+      operationId: handleStripeWebhook
+      summary: Stripe webhook endpoint; authenticated by the Stripe-Signature header, not by a JWT
+      parameters:
+        - name: Stripe-Signature
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: string }
+      responses:
+        '200': { description: Event accepted (or a duplicate that was already processed) }
+        '400': { $ref: '#/components/responses/Problem' }
+
+  /api/v1/admin/payments:
+    get:
+      tags: [AdminPayments]
+      operationId: listPaymentsForBooking
+      summary: Payments and refunds of a booking (agents and admins)
+      parameters:
+        - name: bookingReference
+          in: query
+          required: true
+          schema: { type: string, pattern: '^[A-Z2-9]{6}$' }
+      responses:
+        '200':
+          description: Payments, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Payment' }
+
+components:
+  parameters:
+    PaymentId:
+      name: paymentId
+      in: path
+      required: true
+      schema: { type: string, pattern: '^pay_[A-Za-z0-9]{20,40}$' }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: { type: string, minLength: 8, maxLength: 64, pattern: '^[A-Za-z0-9._:-]+$' }
+
+  responses:
+    Problem:
+      description: Error (RFC 9457)
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+  schemas:
+    Money:
+      type: object
+      required: [amount, currency]
+      properties:
+        amount: { type: number, example: 249.50 }
+        currency: { type: string, pattern: '^[A-Z]{3}$', example: USD }
+
+    PaymentPurpose:
+      type: string
+      enum: [BOOKING, DATE_CHANGE]
+
+    PaymentStatus:
+      type: string
+      description: |
+        REQUIRES_PAYMENT - waiting for the customer (also after a failed card attempt, which can be retried);
+        SUCCEEDED - money captured; CANCELLED - abandoned, e.g. the booking expired
+      enum: [REQUIRES_PAYMENT, SUCCEEDED, CANCELLED]
+
+    RefundStatus:
+      type: string
+      enum: [PENDING, SUCCEEDED, FAILED]
+
+    CreatePaymentRequest:
+      type: object
+      required: [bookingReference, amount, purpose]
+      properties:
+        bookingReference: { type: string, pattern: '^[A-Z2-9]{6}$' }
+        amount: { $ref: '#/components/schemas/Money' }
+        purpose: { $ref: '#/components/schemas/PaymentPurpose' }
+
+    Payment:
+      type: object
+      required: [paymentId, bookingReference, purpose, status, amount, amountRefunded, createdAt]
+      properties:
+        paymentId: { type: string, example: pay_3f2b8c1e8d1a4f7e9a510c2d }
+        bookingReference: { type: string }
+        purpose: { $ref: '#/components/schemas/PaymentPurpose' }
+        status: { $ref: '#/components/schemas/PaymentStatus' }
+        amount: { $ref: '#/components/schemas/Money' }
+        amountRefunded: { $ref: '#/components/schemas/Money' }
+        clientSecret:
+          type: string
+          description: Stripe PaymentIntent client secret, present while status is REQUIRES_PAYMENT
+        failureReason: { type: string }
+        refunds:
+          type: array
+          items: { $ref: '#/components/schemas/Refund' }
+        createdAt: { type: string, format: date-time }
+
+    RefundRequest:
+      type: object
+      required: [amount, reason]
+      properties:
+        amount: { $ref: '#/components/schemas/Money' }
+        reason:
+          type: string
+          enum: [CUSTOMER_CANCELLATION, DATE_CHANGE_DIFFERENCE, TICKETING_FAILED, MANUAL]
+
+    BookingRefundRequest:
+      type: object
+      required: [bookingReference, amount, reason]
+      properties:
+        bookingReference: { type: string, pattern: '^[A-Z2-9]{6}$' }
+        amount: { $ref: '#/components/schemas/Money' }
+        reason:
+          type: string
+          enum: [CUSTOMER_CANCELLATION, DATE_CHANGE_DIFFERENCE, TICKETING_FAILED, MANUAL]
+
+    Refund:
+      type: object
+      required: [refundId, paymentId, status, amount, reason, createdAt]
+      properties:
+        refundId: { type: string }
+        paymentId: { type: string }
+        status: { $ref: '#/components/schemas/RefundStatus' }
+        amount: { $ref: '#/components/schemas/Money' }
+        reason: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    SimulationRequest:
+      type: object
+      required: [outcome]
+      properties:
+        outcome:
+          type: string
+          enum: [SUCCEEDED, FAILED]
+
+    Problem:
+      type: object
+      properties:
+        type: { type: string, format: uri }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string, format: uri }
+        code: { type: string }
+        correlationId: { type: string }
+        timestamp: { type: string, format: date-time }

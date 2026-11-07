@@ -1,0 +1,29 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:payment;MODE=MariaDB;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1
+    username: sa
+    password: ""
+  jpa:
+    hibernate:
+      ddl-auto: none
+  kafka:
+    bootstrap-servers: ${spring.embedded.kafka.brokers:localhost:9}
+
+skybook:
+  scheduling:
+    enabled: false
+  crypto:
+    active-key: test1
+    keys:
+      test1: AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=
+  messaging:
+    lock-clause: FOR UPDATE
+  payment:
+    provider: fake
+    webhook-secret: whsec_test_secret
+
+resilience4j:
+  retry:
+    instances:
+      payment-provider:
+        wait-duration: 10ms
