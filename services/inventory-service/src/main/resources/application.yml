@@ -3,6 +3,10 @@ server:
   shutdown: graceful
 
 spring:
+  cloud:
+    vault:
+      # Off by default; the "vault" profile switches it on (application-vault.yml).
+      enabled: false
   application:
     name: inventory-service
   threads:

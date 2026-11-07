@@ -11,6 +11,10 @@ spring:
       ddl-auto: none
 
 skybook:
+  crypto:
+    active-key: test1
+    keys:
+      test1: AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=
   scheduling:
     enabled: false
   booking:

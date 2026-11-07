@@ -47,6 +47,13 @@
             <scope>provided</scope>
         </dependency>
 
+        <!-- Optional: the encrypting JPA converter is used by services that bring JPA. -->
+        <dependency>
+            <groupId>jakarta.persistence</groupId>
+            <artifactId>jakarta.persistence-api</artifactId>
+            <optional>true</optional>
+        </dependency>
+
         <!-- Optional: security helpers are used by services that bring the resource-server starter. -->
         <dependency>
             <groupId>org.springframework.security</groupId>
@@ -87,6 +94,12 @@
         <dependency>
             <groupId>org.springframework.security</groupId>
             <artifactId>spring-security-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <!-- For the reactive JWT decoder fixture used by the gateway's tests. -->
+            <groupId>io.projectreactor</groupId>
+            <artifactId>reactor-core</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>

@@ -54,5 +54,5 @@ jobs:
       - name: docker compose config (all profiles)
         run: >-
           docker compose
-          --profile core --profile messaging --profile auth --profile notification --profile partners
+          --profile core --profile messaging --profile auth --profile notification --profile partners --profile secrets
           config --quiet

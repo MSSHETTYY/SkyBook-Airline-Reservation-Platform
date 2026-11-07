@@ -1,0 +1,121 @@
+server:
+  port: 8080
+  shutdown: graceful
+
+spring:
+  application:
+    name: api-gateway
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8180/realms/skybook}
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:redis_dev}
+      timeout: 500ms
+      connect-timeout: 500ms
+  cloud:
+    vault:
+      # Off by default; the "vault" profile switches it on (application-vault.yml).
+      enabled: false
+    gateway:
+      server:
+        webflux:
+          httpclient:
+            connect-timeout: 2000
+            response-timeout: 15s
+          default-filters:
+            # Per-user (or per-IP) token bucket; RedisRateLimiter shares buckets across gateway replicas
+            # and fails open if Redis is unavailable (availability over strict limiting).
+            - name: RequestRateLimiter
+              args:
+                key-resolver: "#{@principalOrIpKeyResolver}"
+                rate-limiter: "#{@${skybook.gateway.rate-limiter-bean}}"
+                redis-rate-limiter.replenishRate: 20
+                redis-rate-limiter.burstCapacity: 40
+                redis-rate-limiter.requestedTokens: 1
+            - RemoveRequestHeader=Cookie
+          routes:
+            # Public search and seat maps. Internal inventory APIs (holds, seat releases) are deliberately
+            # NOT routed: they are reachable only inside the cluster, by booking-service.
+            - id: inventory-public
+              uri: ${skybook.gateway.inventory-uri}
+              predicates:
+                - Method=GET
+                - Path=/api/v1/flights,/api/v1/flights/{flightId},/api/v1/flights/{flightId}/seats
+              filters:
+                - name: CircuitBreaker
+                  args:
+                    name: inventory
+                    fallbackUri: forward:/fallback/unavailable
+                    statusCodes: [502, 503, 504]
+            - id: inventory-admin
+              uri: ${skybook.gateway.inventory-uri}
+              predicates:
+                - Path=/api/v1/admin/flights/**
+              filters:
+                - name: CircuitBreaker
+                  args:
+                    name: inventory
+                    fallbackUri: forward:/fallback/unavailable
+                    statusCodes: [502, 503, 504]
+            - id: booking
+              uri: ${skybook.gateway.booking-uri}
+              predicates:
+                - Path=/api/v1/bookings/**,/api/v1/admin/bookings/**
+              filters:
+                - name: CircuitBreaker
+                  args:
+                    name: booking
+                    fallbackUri: forward:/fallback/unavailable
+                    statusCodes: [502, 503, 504]
+            - id: payment
+              uri: ${skybook.gateway.payment-uri}
+              predicates:
+                - Path=/api/v1/payments/**,/api/v1/admin/payments/**
+              filters:
+                - name: CircuitBreaker
+                  args:
+                    name: payment
+                    fallbackUri: forward:/fallback/unavailable
+                    statusCodes: [502, 503, 504]
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,gateway
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  health:
+    redis:
+      enabled: false
+
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        sliding-window-size: 20
+        minimum-number-of-calls: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+  timelimiter:
+    configs:
+      default:
+        # Longer than the slowest legitimate call (booking creation with inventory retries).
+        timeout-duration: 15s
+
+skybook:
+  gateway:
+    inventory-uri: ${INVENTORY_URI:http://localhost:8081}
+    booking-uri: ${BOOKING_URI:http://localhost:8082}
+    payment-uri: ${PAYMENT_URI:http://localhost:8083}
+    allowed-origins: ${ALLOWED_ORIGINS:http://localhost:5173}
+    rate-limiter-bean: ${RATE_LIMITER_BEAN:redisRateLimiter}
+    local-replenish-rate: 20
+    local-burst-capacity: 40

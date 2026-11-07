@@ -3,6 +3,7 @@ package com.skybook.booking.adapter.out.persistence;
 import java.math.BigDecimal;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
@@ -11,6 +12,8 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+
+import com.skybook.common.crypto.EncryptedStringConverter;
 
 @Entity
 @Table(name = "booking_passenger")
@@ -28,13 +31,16 @@ class PassengerEntity {
     private int position;
 
     @Column(name = "first_name", nullable = false)
+    @Convert(converter = EncryptedStringConverter.class)
     private String firstName;
 
     @Column(name = "last_name", nullable = false)
+    @Convert(converter = EncryptedStringConverter.class)
     private String lastName;
 
     /** ISO-8601 date; stored as text so it can be encrypted like the other personal data. */
     @Column(name = "date_of_birth", nullable = false)
+    @Convert(converter = EncryptedStringConverter.class)
     private String dateOfBirth;
 
     @Column(name = "seat_number", nullable = false)

@@ -1,0 +1,29 @@
+# Mutual TLS between services (ADR-0010). Activate with SPRING_PROFILES_ACTIVE=...,mtls.
+# Certificates are PEM files: issued by cert-manager on Kubernetes (mounted at /etc/skybook/tls) or by
+# infra/certs/generate-dev-certs.sh locally (point SKYBOOK_TLS_* at infra/certs/out/...).
+server:
+  ssl:
+    bundle: skybook-tls
+    # Every caller must present a certificate signed by the SkyBook CA.
+    client-auth: need
+
+management:
+  # Probes and Prometheus scrape over plain HTTP on a separate, cluster-internal port: the kubelet and
+  # Prometheus do not hold client certificates. Business endpoints stay behind mTLS.
+  server:
+    port: ${MANAGEMENT_PORT:9081}
+    ssl:
+      enabled: false
+
+spring:
+  ssl:
+    bundle:
+      pem:
+        skybook-tls:
+          # Rotated certificates (cert-manager renewals) are picked up without a restart.
+          reload-on-update: true
+          keystore:
+            certificate: ${SKYBOOK_TLS_CERT:file:/etc/skybook/tls/tls.crt}
+            private-key: ${SKYBOOK_TLS_KEY:file:/etc/skybook/tls/tls.key}
+          truststore:
+            certificate: ${SKYBOOK_TLS_CA:file:/etc/skybook/tls/ca.crt}

@@ -6,6 +6,8 @@ import java.util.random.RandomGenerator;
 
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.ssl.SslBundle;
+import org.springframework.boot.ssl.SslBundles;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
@@ -41,10 +43,12 @@ public class BookingConfig {
                                 ObjectProvider<ClientRegistrationRepository> registrations,
                                 ObjectProvider<OAuth2AuthorizedClientService> clientService,
                                 CircuitBreakerRegistry circuitBreakers, RetryRegistry retries,
-                                ObjectMapper objectMapper) {
+                                ObjectMapper objectMapper, SslBundles sslBundles) {
+        String bundleName = properties.sslBundle();
+        SslBundle sslBundle = bundleName == null || bundleName.isBlank() ? null : sslBundles.getBundle(bundleName);
         RestClient.Builder client = builder.clone()
                 .baseUrl(properties.baseUrl())
-                .requestFactory(requestFactory(properties));
+                .requestFactory(requestFactory(properties, sslBundle));
         String registrationId = properties.oauth2RegistrationId();
         if (registrationId != null && !registrationId.isBlank()) {
             client.requestInterceptor(clientCredentialsInterceptor(registrationId, registrations.getObject(),
@@ -54,13 +58,21 @@ public class BookingConfig {
                 retries.retry("inventory"), objectMapper);
     }
 
-    static JdkClientHttpRequestFactory requestFactory(InventoryClientProperties properties) {
-        JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(
-                HttpClient.newBuilder()
-                        // HTTP/1.1: plain-HTTP h2c upgrades are poorly supported; mTLS (Phase 2) negotiates via ALPN.
-                        .version(HttpClient.Version.HTTP_1_1)
-                        .connectTimeout(properties.connectTimeout())
-                        .build());
+    /**
+     * JDK HTTP client with timeouts and, when a bundle is given, mutual TLS: the bundle's key store holds the
+     * client certificate presented to inventory, its trust store the CA that inventory's certificate must
+     * chain to. Host names are verified against the certificate's subject alternative names.
+     */
+    public static JdkClientHttpRequestFactory requestFactory(InventoryClientProperties properties,
+                                                             SslBundle sslBundle) {
+        HttpClient.Builder http = HttpClient.newBuilder()
+                // HTTP/1.1: plain-HTTP h2c upgrades are poorly supported by some servers.
+                .version(HttpClient.Version.HTTP_1_1)
+                .connectTimeout(properties.connectTimeout());
+        if (sslBundle != null) {
+            http.sslContext(sslBundle.createSslContext());
+        }
+        JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(http.build());
         factory.setReadTimeout(properties.readTimeout());
         return factory;
     }

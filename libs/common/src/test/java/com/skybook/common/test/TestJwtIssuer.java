@@ -12,6 +12,8 @@ import java.util.UUID;
 
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
+import org.springframework.security.oauth2.jwt.NimbusReactiveJwtDecoder;
+import org.springframework.security.oauth2.jwt.ReactiveJwtDecoder;
 
 import com.nimbusds.jose.JOSEException;
 import com.nimbusds.jose.JWSAlgorithm;
@@ -43,6 +45,11 @@ public final class TestJwtIssuer {
 
     public JwtDecoder decoder() {
         return NimbusJwtDecoder.withPublicKey((RSAPublicKey) keyPair.getPublic()).build();
+    }
+
+    /** For reactive resource servers (the API gateway). */
+    public ReactiveJwtDecoder reactiveDecoder() {
+        return NimbusReactiveJwtDecoder.withPublicKey((RSAPublicKey) keyPair.getPublic()).build();
     }
 
     /** A token for {@code subject} with the given realm roles, valid for an hour. */

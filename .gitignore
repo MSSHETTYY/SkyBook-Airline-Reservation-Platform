@@ -29,3 +29,9 @@ Thumbs.db
 *.p12
 *.jks
 !**/src/test/resources/**/*.p12
+
+# Locally generated development certificates (infra/certs/generate-dev-certs.sh)
+infra/certs/out/
+# Test-only certificates (throwaway CA, private key deleted) used by the mTLS tests
+!libs/common/src/test/resources/test-certs/
+!libs/common/src/test/resources/test-certs/*

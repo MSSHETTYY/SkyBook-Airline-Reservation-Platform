@@ -7,6 +7,7 @@ import java.util.List;
 
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -18,6 +19,8 @@ import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 
 import org.hibernate.annotations.BatchSize;
+
+import com.skybook.common.crypto.EncryptedStringConverter;
 
 /** Persistence model of a booking. Mapped to and from the domain by {@link BookingPersistenceMapper}. */
 @Entity
@@ -35,6 +38,7 @@ class BookingEntity {
     private String customerId;
 
     @Column(name = "contact_email", nullable = false)
+    @Convert(converter = EncryptedStringConverter.class)
     private String contactEmail;
 
     @Column(nullable = false)
@@ -71,6 +75,7 @@ class BookingEntity {
     private String paymentId;
 
     @Column(name = "payment_client_secret")
+    @Convert(converter = EncryptedStringConverter.class)
     private String paymentClientSecret;
 
     @Column(name = "amount_paid", nullable = false)

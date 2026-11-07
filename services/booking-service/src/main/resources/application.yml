@@ -3,6 +3,10 @@ server:
   shutdown: graceful
 
 spring:
+  cloud:
+    vault:
+      # Off by default; the "vault" profile switches it on (application-vault.yml).
+      enabled: false
   application:
     name: booking-service
   threads:
@@ -57,6 +61,12 @@ management:
       enabled: true
 
 skybook:
+  crypto:
+    # Personal data encryption key ring. In every real environment the keys come from Vault
+    # (profile "vault"); this development key only exists so the service starts locally.
+    active-key: ${CRYPTO_ACTIVE_KEY:dev1}
+    keys:
+      dev1: ${CRYPTO_KEY_DEV1:ZGV2LW9ubHkta2V5LWZvci1sb2NhbC1za3lib29rISE=}
   booking:
     expiry-interval: PT30S
     inventory:

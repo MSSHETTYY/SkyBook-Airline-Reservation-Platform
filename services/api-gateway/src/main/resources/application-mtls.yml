@@ -1,0 +1,26 @@
+# The gateway calls the services over mutual TLS (ADR-0010). Browser-facing TLS is terminated by the
+# ingress controller in front of the gateway.
+spring:
+  ssl:
+    bundle:
+      pem:
+        skybook-tls:
+          reload-on-update: true
+          keystore:
+            certificate: ${SKYBOOK_TLS_CERT:file:/etc/skybook/tls/tls.crt}
+            private-key: ${SKYBOOK_TLS_KEY:file:/etc/skybook/tls/tls.key}
+          truststore:
+            certificate: ${SKYBOOK_TLS_CA:file:/etc/skybook/tls/ca.crt}
+  cloud:
+    gateway:
+      server:
+        webflux:
+          httpclient:
+            ssl:
+              ssl-bundle: skybook-tls
+
+skybook:
+  gateway:
+    inventory-uri: ${INVENTORY_URI:https://inventory-service:8081}
+    booking-uri: ${BOOKING_URI:https://booking-service:8082}
+    payment-uri: ${PAYMENT_URI:https://payment-service:8083}

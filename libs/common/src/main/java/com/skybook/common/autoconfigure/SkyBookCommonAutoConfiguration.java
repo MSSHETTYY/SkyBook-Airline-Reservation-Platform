@@ -5,6 +5,8 @@ import java.time.Clock;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication.Type;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
@@ -12,6 +14,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
 
+import com.skybook.common.crypto.EncryptionProperties;
+import com.skybook.common.crypto.FieldEncryptor;
 import com.skybook.common.error.GlobalProblemHandler;
 import com.skybook.common.security.SecurityProblemHandler;
 import com.skybook.common.web.CorrelationIdFilter;
@@ -60,6 +64,19 @@ public class SkyBookCommonAutoConfiguration {
         @ConditionalOnMissingBean
         SecurityProblemHandler securityProblemHandler(Clock clock) {
             return new SecurityProblemHandler(clock);
+        }
+    }
+
+    /** Field encryption, enabled when a key ring is configured ({@code skybook.crypto.active-key}). */
+    @Configuration(proxyBeanMethods = false)
+    @EnableConfigurationProperties(EncryptionProperties.class)
+    @ConditionalOnProperty(name = "skybook.crypto.active-key")
+    static class FieldEncryption {
+
+        @Bean
+        @ConditionalOnMissingBean
+        FieldEncryptor fieldEncryptor(EncryptionProperties properties) {
+            return FieldEncryptor.fromBase64(properties.keys(), properties.activeKey());
         }
     }
 }

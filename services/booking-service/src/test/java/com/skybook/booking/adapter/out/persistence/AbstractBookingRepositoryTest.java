@@ -12,6 +12,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import com.skybook.booking.application.port.out.BookingRepository;
 import com.skybook.booking.application.port.out.BookingRepository.DuplicateBookingException;
@@ -34,6 +35,9 @@ abstract class AbstractBookingRepositoryTest extends BookingTestSupport {
 
     @Autowired
     private BookingRepository repository;
+
+    @Autowired
+    private JdbcTemplate jdbc;
 
     private Booking newBooking(String customer) {
         int n = SEQUENCE.incrementAndGet();
@@ -87,6 +91,24 @@ abstract class AbstractBookingRepositoryTest extends BookingTestSupport {
         Booking afterAbandon = repository.save(loaded);
         assertThat(repository.findByReference(afterAbandon.getReference().value()).orElseThrow().getPendingChange())
                 .isNull();
+    }
+
+    @Test
+    void personalDataIsEncryptedAtRest() {
+        Booking saved = repository.save(newBooking("repo-cust-7"));
+        String reference = saved.getReference().value();
+
+        String email = jdbc.queryForObject("select contact_email from booking where reference = ?", String.class,
+                reference);
+        List<String> passengerColumns = jdbc.queryForList(
+                "select concat(p.first_name, '|', p.last_name, '|', p.date_of_birth) from booking_passenger p"
+                        + " join booking b on b.id = p.booking_id where b.reference = ?", String.class, reference);
+
+        assertThat(email).startsWith("test1:").doesNotContain("ada", "example");
+        assertThat(passengerColumns).hasSize(2).allSatisfy(row -> assertThat(row)
+                .doesNotContain("Ada", "Lovelace", "Alan", "Turing", "1990", "1992"));
+        assertThat(repository.findByReference(reference).orElseThrow().getContactEmail())
+                .isEqualTo("ada@example.test");
     }
 
     @Test

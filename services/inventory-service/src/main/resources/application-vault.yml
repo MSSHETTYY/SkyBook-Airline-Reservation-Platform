@@ -1,0 +1,20 @@
+# Secrets from HashiCorp Vault (ADR-0011): database passwords, OAuth2 client secrets, encryption keys.
+# Values in Vault override the development defaults in application.yml.
+spring:
+  config:
+    import: vault://
+  cloud:
+    vault:
+      enabled: true
+      uri: ${VAULT_ADDR:http://localhost:8200}
+      # Local dev mode uses a token; on Kubernetes the pod authenticates with its service-account JWT
+      # (SPRING_CLOUD_VAULT_AUTHENTICATION=KUBERNETES, see the Helm chart).
+      authentication: ${VAULT_AUTHENTICATION:TOKEN}
+      token: ${VAULT_TOKEN:skybook-dev-root}
+      kubernetes:
+        role: inventory-service
+      fail-fast: true
+      kv:
+        enabled: true
+        backend: secret
+        application-name: inventory-service

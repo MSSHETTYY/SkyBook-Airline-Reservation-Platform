@@ -12,10 +12,11 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param readTimeout           response timeout per attempt
  * @param oauth2RegistrationId  Spring Security client registration used for client-credentials tokens;
  *                              blank disables token propagation (tests against WireMock)
+ * @param sslBundle             SSL bundle with the client certificate for mutual TLS; blank for plain HTTP
  */
 @ConfigurationProperties("skybook.booking.inventory")
 public record InventoryClientProperties(String baseUrl, Duration connectTimeout, Duration readTimeout,
-                                        String oauth2RegistrationId) {
+                                        String oauth2RegistrationId, String sslBundle) {
 
     public InventoryClientProperties {
         connectTimeout = connectTimeout == null ? Duration.ofSeconds(2) : connectTimeout;

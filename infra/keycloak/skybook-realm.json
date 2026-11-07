@@ -1,0 +1,111 @@
+{
+  "realm": "skybook",
+  "displayName": "SkyBook",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": true,
+  "registrationEmailAsUsername": true,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "bruteForceProtected": true,
+  "failureFactor": 5,
+  "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 1800,
+  "passwordPolicy": "length(10) and upperCase(1) and lowerCase(1) and digits(1) and notUsername",
+  "roles": {
+    "realm": [
+      { "name": "CUSTOMER", "description": "Books and manages own bookings" },
+      { "name": "AGENT", "description": "Services any booking, views inventory" },
+      { "name": "ADMIN", "description": "Agent rights plus flight management and manual refunds" },
+      { "name": "SERVICE", "description": "Machine identity for service-to-service calls" }
+    ]
+  },
+  "defaultRole": {
+    "name": "default-roles-skybook",
+    "description": "Self-registered users become customers",
+    "composite": true,
+    "composites": { "realm": ["offline_access", "uma_authorization", "CUSTOMER"] }
+  },
+  "clients": [
+    {
+      "clientId": "skybook-web",
+      "name": "SkyBook web portal (SPA)",
+      "description": "Public client: authorization code flow with PKCE (S256), no client secret",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": ["http://localhost:5173/*", "http://localhost:8088/*"],
+      "webOrigins": ["http://localhost:5173", "http://localhost:8088"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:5173/*##http://localhost:8088/*"
+      }
+    },
+    {
+      "clientId": "booking-service",
+      "name": "booking-service (service account)",
+      "description": "Confidential client for the client credentials grant; its service account has role SERVICE",
+      "enabled": true,
+      "publicClient": false,
+      "protocol": "openid-connect",
+      "clientAuthenticatorType": "client-secret",
+      "secret": "booking-service-dev-secret",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true
+    },
+    {
+      "clientId": "skybook-test-client",
+      "name": "Automated API tests (DEVELOPMENT ONLY)",
+      "description": "Resource-owner password grant for Newman and k6 against local/dev environments. Never import into production.",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true
+    }
+  ],
+  "users": [
+    {
+      "username": "customer@skybook.test",
+      "email": "customer@skybook.test",
+      "emailVerified": true,
+      "firstName": "Casey",
+      "lastName": "Customer",
+      "enabled": true,
+      "credentials": [{ "type": "password", "value": "Customer123!", "temporary": false }],
+      "realmRoles": ["default-roles-skybook"]
+    },
+    {
+      "username": "agent@skybook.test",
+      "email": "agent@skybook.test",
+      "emailVerified": true,
+      "firstName": "Avery",
+      "lastName": "Agent",
+      "enabled": true,
+      "credentials": [{ "type": "password", "value": "Agent12345!", "temporary": false }],
+      "realmRoles": ["AGENT"]
+    },
+    {
+      "username": "admin@skybook.test",
+      "email": "admin@skybook.test",
+      "emailVerified": true,
+      "firstName": "Alex",
+      "lastName": "Admin",
+      "enabled": true,
+      "credentials": [{ "type": "password", "value": "Admin12345!", "temporary": false }],
+      "realmRoles": ["ADMIN", "AGENT"]
+    },
+    {
+      "username": "service-account-booking-service",
+      "enabled": true,
+      "serviceAccountClientId": "booking-service",
+      "realmRoles": ["SERVICE"]
+    }
+  ]
+}

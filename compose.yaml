@@ -6,6 +6,7 @@
 #   docker compose --profile core up -d                 # Oracle + MariaDB + Redis       (~2.6 GB)
 #   docker compose --profile messaging up -d            # Kafka + Solace                 (~2.5 GB)
 #   docker compose --profile auth --profile partners up -d
+#   docker compose --profile secrets up -d             # Vault (dev mode) seeded with service secrets
 #
 # Credentials below are development-only defaults; override them in .env (see .env.example).
 # Production secrets come from Vault (Phase 2), never from this file.
@@ -165,7 +166,8 @@ services:
     image: quay.io/keycloak/keycloak:26.8.2
     profiles: [auth]
     mem_limit: 768m
-    command: ["start-dev"]
+    # Imports infra/keycloak/skybook-realm.json (roles, SPA PKCE client, service account, demo users).
+    command: ["start-dev", "--import-realm"]
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-keycloak_admin_dev}
@@ -173,7 +175,9 @@ services:
       KC_HTTP_PORT: "8080"
       JAVA_OPTS_KC_HEAP: -XX:MaxRAMPercentage=65
     ports: ["8180:8080"]
-    volumes: [keycloak-data:/opt/keycloak/data]
+    volumes:
+      - keycloak-data:/opt/keycloak/data
+      - ./infra/keycloak:/opt/keycloak/data/import:ro
     healthcheck:
       # The image ships without curl; use bash's /dev/tcp against the management port.
       test:
@@ -188,6 +192,38 @@ services:
       timeout: 5s
       retries: 20
       start_period: 60s
+
+  # ------------------------------------------------------------- secrets ----
+  # HashiCorp Vault in dev mode (in-memory, unsealed, root token) plus a one-shot job that seeds secrets.
+  vault:
+    <<: *defaults
+    image: hashicorp/vault:2.2.1
+    profiles: [secrets]
+    mem_limit: 256m
+    cap_add: [IPC_LOCK]
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: ${VAULT_DEV_TOKEN:-skybook-dev-root}
+      VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+    ports: ["8200:8200"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8200/v1/sys/health > /dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  vault-init:
+    image: hashicorp/vault:2.2.1
+    profiles: [secrets]
+    networks: [skybook]
+    restart: "no"
+    depends_on:
+      vault:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "/init/init-secrets.sh"]
+    environment:
+      VAULT_ADDR: http://vault:8200
+      VAULT_TOKEN: ${VAULT_DEV_TOKEN:-skybook-dev-root}
+    volumes: [./infra/vault:/init:ro]
 
   # -------------------------------------------------------- notification ----
   mongodb:
