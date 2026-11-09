@@ -1,0 +1,50 @@
+# Rendered by the nginx image's envsubst step (only defined SKYBOOK_* variables are substituted,
+# nginx's own $variables are left alone).
+server {
+    listen 8080;
+    server_name _;
+    root /usr/share/nginx/html;
+    server_tokens off;
+
+    # Defence in depth for an app that handles personal data. Stripe needs its script and frames;
+    # MUI/Emotion inject <style> tags, hence 'unsafe-inline' for styles only (never scripts).
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' https://js.stripe.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.stripe.com; connect-src 'self' ${SKYBOOK_OIDC_ORIGIN} https://api.stripe.com; frame-src https://js.stripe.com https://hooks.stripe.com ${SKYBOOK_OIDC_ORIGIN}; frame-ancestors 'none'; base-uri 'self'; form-action 'self' ${SKYBOOK_OIDC_ORIGIN}" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(self \"https://js.stripe.com\")" always;
+    add_header Cross-Origin-Opener-Policy "same-origin" always;
+
+    gzip on;
+    gzip_types text/css application/javascript application/json image/svg+xml;
+
+    location = /healthz {
+        access_log off;
+        default_type text/plain;
+        return 200 "ok\n";
+    }
+
+    # Same-origin API: the browser never needs CORS, and the gateway stays the single entry point.
+    location /api/ {
+        proxy_pass ${SKYBOOK_GATEWAY_URL};
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 30s;
+    }
+
+    # Content-hashed bundles never change: cache for a year.
+    location /assets/ {
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+        try_files $uri =404;
+    }
+
+    location = /config.js {
+        add_header Cache-Control "no-store" always;
+    }
+
+    # Client-side routes (/bookings/ABC234, ...) all serve the SPA shell.
+    location / {
+        add_header Cache-Control "no-cache" always;
+        try_files $uri /index.html;
+    }
+}

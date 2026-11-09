@@ -1,0 +1,10 @@
+# typescript-fetch client generated from the same OpenAPI spec the inventory service implements (API-first).
+generatorName: typescript-fetch
+inputSpec: ../api/inventory/v1/inventory-api.yaml
+outputDir: src/api/generated/inventory
+additionalProperties:
+  supportsES6: true
+  useSingleRequestParameter: true
+  withInterfaces: false
+  enumPropertyNaming: original
+  stringEnums: true

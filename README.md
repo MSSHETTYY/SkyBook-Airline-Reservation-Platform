@@ -142,6 +142,26 @@ Run one or two profiles at a time. [ADR-0003](docs/adr/0003-local-runtime-footpr
 | `notification` | MongoDB, Mailpit       | ~0.6 GB      | Phase 4          |
 | `partners`     | WireMock               | 256 MB       | Phase 3 onward   |
 
+### Web UI
+
+The portal lives in [web-ui/](web-ui/) (React 19 + TypeScript, ADR-0017). It needs Node 20.19 or later
+(24 LTS recommended) and, to generate the API clients, the JDK that is already installed.
+
+```bash
+cd web-ui
+npm install
+npm run generate:api        # TypeScript clients from api/*/v1/*.yaml
+npm run dev:mock            # http://localhost:5173 - no backend needed: MSW mock API + role picker
+npm run dev                 # against the real stack: gateway on :8080, Keycloak on :8180
+npm run verify              # lint, type-check, unit tests with coverage gate, production build
+npx playwright install      # once: Chromium, Firefox, WebKit
+npm run e2e                 # Playwright journeys on 3 engines + mobile, axe WCAG 2.1 AA scans
+```
+
+Demo users with Keycloak: `customer@skybook.test`, `agent@skybook.test`, `admin@skybook.test`
+(passwords in [infra/keycloak/skybook-realm.json](infra/keycloak/skybook-realm.json)). In mock mode, seat
+3A always fails on the first attempt so you can see how a seat conflict is handled.
+
 ### Ports
 
 | Port  | Component                        | Port  | Component                  |
@@ -152,6 +172,7 @@ Run one or two profiles at a time. [ADR-0003](docs/adr/0003-local-runtime-footpr
 | 27017 | MongoDB                          | 8180  | Keycloak                   |
 | 9092  | Kafka (from the host)            | 8190  | Solace PubSub+ Manager     |
 | 55555 | Solace SMF (JMS)                 | 8080  | api-gateway (Phase 2)      |
+| 5173  | web-ui dev server (Vite)         | 8088  | web-ui container (nginx)   |
 
 The application services will use ports 8081-8085.
 
@@ -164,7 +185,7 @@ The application services will use ports 8081-8085.
 | 2     | Keycloak, api-gateway, RBAC, mTLS, encryption of personal data at rest, Vault              | Done    |
 | 3     | payment-service (Stripe), saga with compensations, outbox, DLTs, Resilience4j, Pact        | Done    |
 | 4     | notification-service (Solace JMS, Mailpit, MongoDB audit trail), Kafka-to-Solace bridge    | Done    |
-| 5     | web-ui (React + TS, accessible), Vitest/RTL, Playwright + axe                              | Planned |
+| 5     | web-ui (React + TS, accessible), Vitest/RTL, Playwright + axe                              | Done    |
 | 6     | Dockerfiles, Helm on kind, full CI/CD (SonarQube, Trivy, Newman, GHCR, deploy)             | Planned |
 | 7     | OpenTelemetry, Prometheus/Grafana SLOs, Loki, k6 load test, chaos tests, final docs        | Planned |
 | 8     | Optional: Spring AI booking assistant (Ollama), Expo mobile app                            | Planned |
@@ -185,6 +206,9 @@ To use real Stripe **test mode**:
 4. Pay with Stripe's test card `4242 4242 4242 4242`, any future date and any CVC.
 
 Card data never touches SkyBook: Stripe Elements sends it to Stripe directly (PCI-DSS SAQ A scope).
+For the web UI, set `VITE_STRIPE_PUBLISHABLE_KEY=pk_test_...` in `web-ui/.env.local` (or
+`SKYBOOK_STRIPE_PUBLISHABLE_KEY` for the container); without it the booking page shows the simulation
+buttons instead of the card form.
 
 ## Contributing
 

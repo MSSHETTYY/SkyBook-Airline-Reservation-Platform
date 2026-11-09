@@ -1,0 +1,10 @@
+# typescript-fetch client generated from the same OpenAPI spec the booking service implements (API-first).
+generatorName: typescript-fetch
+inputSpec: ../api/booking/v1/booking-api.yaml
+outputDir: src/api/generated/booking
+additionalProperties:
+  supportsES6: true
+  useSingleRequestParameter: true
+  withInterfaces: false
+  enumPropertyNaming: original
+  stringEnums: true

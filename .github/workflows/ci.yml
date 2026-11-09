@@ -45,6 +45,62 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
+  web-ui:
+    name: Web UI - lint, types, unit tests, build, E2E + axe
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: web-ui
+    steps:
+      - uses: actions/checkout@v4
+
+      # The TypeScript clients are generated from api/*.yaml with openapi-generator (a Java tool).
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web-ui/package-lock.json
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      - name: Generate API clients from the OpenAPI specs
+        run: npm run generate:api
+
+      - name: Lint and type-check
+        run: |
+          npm run lint
+          npm run typecheck
+
+      - name: Unit and component tests (coverage gate in vite.config.ts)
+        run: npm run test:coverage
+
+      - name: Production build
+        run: npm run build
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium firefox webkit
+
+      - name: E2E (Chromium, Firefox, WebKit, mobile) with axe WCAG 2.1 AA scans
+        run: npm run e2e
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-ui-reports
+          path: |
+            web-ui/coverage/
+            web-ui/playwright-report/
+          retention-days: 7
+          if-no-files-found: ignore
+
   compose-lint:
     name: Validate docker compose
     runs-on: ubuntu-latest

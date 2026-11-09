@@ -1,0 +1,9 @@
+**/node_modules
+**/dist
+**/coverage
+**/target
+**/playwright-report
+**/test-results
+web-ui/src/api/generated
+.git
+*.worktrees

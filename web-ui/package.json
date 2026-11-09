@@ -1,0 +1,71 @@
+{
+  "name": "skybook-web-ui",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "SkyBook customer and agent portal (React + TypeScript)",
+  "scripts": {
+    "generate:api": "openapi-generator-cli batch --clean openapi-generator/inventory.yaml openapi-generator/booking.yaml openapi-generator/payment.yaml",
+    "dev": "vite",
+    "dev:mock": "vite --mode mock",
+    "build": "tsc -b && vite build",
+    "build:mock": "tsc -b && vite build --mode mock",
+    "preview": "vite preview",
+    "lint": "eslint .",
+    "typecheck": "tsc -b --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "e2e": "playwright test",
+    "e2e:chromium": "playwright test --project=chromium",
+    "verify": "npm run lint && npm run typecheck && npm run test:coverage && npm run build"
+  },
+  "dependencies": {
+    "@emotion/react": "11.14.0",
+    "@emotion/styled": "11.14.1",
+    "@hookform/resolvers": "5.9.2",
+    "@mui/icons-material": "7.3.11",
+    "@mui/material": "7.3.11",
+    "@stripe/react-stripe-js": "3.11.0",
+    "@stripe/stripe-js": "7.10.0",
+    "@tanstack/react-query": "5.107.1",
+    "oidc-client-ts": "3.5.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-hook-form": "7.91.0",
+    "react-oidc-context": "3.3.1",
+    "react-router": "7.18.5",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
+    "@eslint/js": "9.39.5",
+    "@openapitools/openapi-generator-cli": "2.42.1",
+    "@playwright/test": "1.65.0",
+    "@testing-library/jest-dom": "6.10.0",
+    "@testing-library/react": "16.3.3",
+    "@testing-library/user-event": "14.6.8",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "5.2.0",
+    "@vitest/coverage-v8": "3.2.7",
+    "eslint": "9.39.5",
+    "eslint-plugin-jsx-a11y": "6.10.2",
+    "eslint-plugin-react-hooks": "5.2.0",
+    "globals": "16.5.0",
+    "jsdom": "26.1.0",
+    "msw": "2.15.0",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.72.1",
+    "vite": "7.3.8",
+    "vitest": "3.2.7"
+  },
+  "msw": {
+    "workerDirectory": [
+      "public"
+    ]
+  },
+  "engines": {
+    "node": ">=20.19"
+  }
+}

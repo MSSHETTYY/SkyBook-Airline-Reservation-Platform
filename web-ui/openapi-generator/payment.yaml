@@ -1,0 +1,10 @@
+# typescript-fetch client generated from the same OpenAPI spec the payment service implements (API-first).
+generatorName: typescript-fetch
+inputSpec: ../api/payment/v1/payment-api.yaml
+outputDir: src/api/generated/payment
+additionalProperties:
+  supportsES6: true
+  useSingleRequestParameter: true
+  withInterfaces: false
+  enumPropertyNaming: original
+  stringEnums: true
