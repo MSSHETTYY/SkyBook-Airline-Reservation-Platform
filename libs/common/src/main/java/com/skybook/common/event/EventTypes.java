@@ -11,6 +11,7 @@ public final class EventTypes {
     public static final String PAYMENT_COMPLETED = "PaymentCompleted";
     public static final String PAYMENT_FAILED = "PaymentFailed";
     public static final String TICKET_ISSUED = "TicketIssued";
+    public static final String BOOKING_CHANGED = "BookingChanged";
     public static final String BOOKING_CANCELLED = "BookingCancelled";
     public static final String REFUND_ISSUED = "RefundIssued";
 

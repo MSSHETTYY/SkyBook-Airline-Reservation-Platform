@@ -39,7 +39,18 @@ final class BookingApiMapper {
                         .toList())
                 .totalPrice(toApi(booking.getTotalPrice()))
                 .contactEmail(booking.getContactEmail())
+                .amountPaid(toApi(booking.getAmountPaid()))
+                .amountRefunded(toApi(booking.getAmountRefunded()))
                 .createdAt(toOffset(booking.getCreatedAt()));
+        var pending = booking.getPendingChange();
+        if (booking.getStatus() == com.skybook.booking.domain.model.BookingStatus.CHANGE_PENDING_PAYMENT) {
+            api.changeAmountDue(toApi(pending.amountDue()));
+            api.payment(new PaymentInfo()
+                    .paymentId(pending.paymentId())
+                    .status(pending.paid() ? "SUCCEEDED" : "REQUIRES_PAYMENT")
+                    .clientSecret(booking.getPaymentClientSecret()));
+            return api;
+        }
         if (booking.getStatus() == com.skybook.booking.domain.model.BookingStatus.PENDING_PAYMENT) {
             api.holdExpiresAt(toOffset(booking.getHoldExpiresAt()));
         }

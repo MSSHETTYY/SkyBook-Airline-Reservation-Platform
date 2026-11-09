@@ -50,6 +50,14 @@
             <artifactId>spring-boot-starter-restclient</artifactId>
         </dependency>
         <dependency>
+            <groupId>com.skybook</groupId>
+            <artifactId>skybook-messaging</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-kafka</artifactId>
+        </dependency>
+        <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-security-oauth2-resource-server</artifactId>
         </dependency>
@@ -128,6 +136,21 @@
             <scope>test</scope>
         </dependency>
         <dependency>
+            <groupId>org.springframework.kafka</groupId>
+            <artifactId>spring-kafka-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.awaitility</groupId>
+            <artifactId>awaitility</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>au.com.dius.pact.consumer</groupId>
+            <artifactId>junit5</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>com.tngtech.archunit</groupId>
             <artifactId>archunit-junit5</artifactId>
             <scope>test</scope>
@@ -164,7 +187,30 @@
                             <output>${project.build.directory}/generated-sources/inventory-client</output>
                         </configuration>
                     </execution>
+                    <!-- Client-side DTOs for the payment contract (consumer of payment-service). -->
+                    <execution>
+                        <id>payment-client-v1</id>
+                        <goals>
+                            <goal>generate</goal>
+                        </goals>
+                        <configuration>
+                            <inputSpec>${maven.multiModuleProjectDirectory}/api/payment/v1/payment-api.yaml</inputSpec>
+                            <generateApis>false</generateApis>
+                            <modelPackage>com.skybook.booking.adapter.out.payment.model</modelPackage>
+                            <output>${project.build.directory}/generated-sources/payment-client</output>
+                        </configuration>
+                    </execution>
                 </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <systemPropertyVariables>
+                        <!-- Consumer-driven contracts are written to /contracts/pacts, where the providers verify them. -->
+                        <pact.rootDir>${maven.multiModuleProjectDirectory}/contracts/pacts</pact.rootDir>
+                    </systemPropertyVariables>
+                </configuration>
             </plugin>
             <plugin>
                 <groupId>org.springframework.boot</groupId>

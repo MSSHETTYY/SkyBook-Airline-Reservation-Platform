@@ -84,6 +84,9 @@ class BookingEntity {
     @Column(name = "amount_refunded", nullable = false)
     private BigDecimal amountRefunded;
 
+    @Column(name = "cancellation_refund")
+    private BigDecimal cancellationRefund;
+
     @Column(name = "idempotency_key", nullable = false, updatable = false)
     private String idempotencyKey;
 
@@ -224,9 +227,14 @@ class BookingEntity {
         return amountRefunded;
     }
 
-    void setAmounts(BigDecimal paid, BigDecimal refunded) {
+    void setAmounts(BigDecimal paid, BigDecimal refunded, BigDecimal cancellation) {
         this.amountPaid = paid;
         this.amountRefunded = refunded;
+        this.cancellationRefund = cancellation;
+    }
+
+    BigDecimal getCancellationRefund() {
+        return cancellationRefund;
     }
 
     String getIdempotencyKey() {

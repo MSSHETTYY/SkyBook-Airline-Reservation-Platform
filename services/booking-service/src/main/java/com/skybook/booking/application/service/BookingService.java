@@ -16,14 +16,17 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.ConcurrencyFailureException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import com.skybook.booking.application.port.in.BookingQueries;
 import com.skybook.booking.application.port.in.CreateBookingUseCase;
 import com.skybook.booking.application.port.in.ExpireUnpaidBookingsUseCase;
 import com.skybook.booking.application.port.in.PageResult;
+import com.skybook.booking.application.port.out.BookingEventPublisher;
 import com.skybook.booking.application.port.out.BookingRepository;
 import com.skybook.booking.application.port.out.BookingRepository.DuplicateBookingException;
 import com.skybook.booking.application.port.out.InventoryPort;
+import com.skybook.booking.application.port.out.PaymentPort;
 import com.skybook.booking.domain.model.Booking;
 import com.skybook.booking.domain.model.BookingErrorCode;
 import com.skybook.booking.domain.model.BookingReference;
@@ -32,6 +35,7 @@ import com.skybook.booking.domain.model.Passenger;
 import com.skybook.common.error.CommonErrorCode;
 import com.skybook.common.error.ResourceNotFoundException;
 import com.skybook.common.error.SkyBookException;
+import com.skybook.common.money.Money;
 
 /**
  * Booking creation, queries and expiry of unpaid bookings.
@@ -50,12 +54,19 @@ public class BookingService implements CreateBookingUseCase, BookingQueries, Exp
 
     private final BookingRepository bookings;
     private final InventoryPort inventory;
+    private final PaymentPort payments;
+    private final BookingEventPublisher events;
+    private final TransactionTemplate tx;
     private final RandomGenerator random;
     private final Clock clock;
 
-    public BookingService(BookingRepository bookings, InventoryPort inventory, RandomGenerator random, Clock clock) {
+    public BookingService(BookingRepository bookings, InventoryPort inventory, PaymentPort payments,
+                          BookingEventPublisher events, TransactionTemplate tx, RandomGenerator random, Clock clock) {
         this.bookings = bookings;
         this.inventory = inventory;
+        this.payments = payments;
+        this.events = events;
+        this.tx = tx;
         this.random = random;
         this.clock = clock;
     }
@@ -67,7 +78,7 @@ public class BookingService implements CreateBookingUseCase, BookingQueries, Exp
         String fingerprint = fingerprint(command);
         var existing = bookings.findByCustomerAndIdempotencyKey(command.customerId(), command.idempotencyKey());
         if (existing.isPresent()) {
-            return replay(existing.get(), fingerprint);
+            return ensurePayment(replay(existing.get(), fingerprint));
         }
         List<String> seatNumbers = command.passengers().stream().map(PassengerDetails::seatNumber).toList();
         requireDistinct(seatNumbers);
@@ -78,11 +89,11 @@ public class BookingService implements CreateBookingUseCase, BookingQueries, Exp
             Booking saved = saveWithFreshReference(command, hold, fingerprint);
             LOG.info("Booking {} created for flight {} with {} passenger(s); payment due by {}",
                     saved.getReference(), hold.flight().flightNumber(), seatNumbers.size(), hold.expiresAt());
-            return saved;
+            return ensurePayment(saved);
         } catch (DuplicateBookingException ex) {
             // A concurrent request with the same idempotency key won; it owns the (shared) hold.
             return bookings.findByCustomerAndIdempotencyKey(command.customerId(), command.idempotencyKey())
-                    .map(winner -> replay(winner, fingerprint))
+                    .map(winner -> ensurePayment(replay(winner, fingerprint)))
                     .orElseThrow(() -> ex);
         } catch (RuntimeException ex) {
             releaseQuietly(hold.holdId());
@@ -102,13 +113,41 @@ public class BookingService implements CreateBookingUseCase, BookingQueries, Exp
                     command.contactEmail(), hold.flight(), passengers, hold.holdId(), hold.expiresAt(),
                     command.idempotencyKey(), fingerprint, now);
             try {
-                return bookings.save(booking);
+                // The booking and its first events commit together (transactional outbox).
+                return tx.execute(status -> {
+                    Booking saved = bookings.save(booking);
+                    events.bookingCreated(saved);
+                    events.seatsHeld(saved);
+                    return saved;
+                });
             } catch (DuplicateBookingException ex) {
                 if (ex.isDuplicateIdempotencyKey() || attempt >= MAX_REFERENCE_ATTEMPTS) {
                     throw ex;
                 }
                 LOG.warn("Booking reference collision on attempt {}; generating a new reference", attempt);
             }
+        }
+    }
+
+    /**
+     * Attaches the payment the customer completes in the browser. Graceful degradation: if payment-service
+     * is down the booking is still returned (seats stay held); the client retries the same request
+     * (same Idempotency-Key) and the payment is attached then. The payment key is derived from the booking
+     * reference, so repeated attempts never create a second payment.
+     */
+    private Booking ensurePayment(Booking booking) {
+        if (booking.getPaymentId() != null || booking.getStatus() != BookingStatus.PENDING_PAYMENT) {
+            return booking;
+        }
+        try {
+            PaymentPort.PaymentIntent intent = payments.createPayment(booking.getReference().value(),
+                    booking.getTotalPrice(), PaymentPort.Purpose.BOOKING, "booking-" + booking.getReference());
+            booking.attachPayment(intent.paymentId(), intent.clientSecret(), clock.instant());
+            return bookings.save(booking);
+        } catch (SkyBookException ex) {
+            LOG.warn("Booking {} created but its payment could not be set up yet: {}", booking.getReference(),
+                    ex.getMessage());
+            return booking;
         }
     }
 
@@ -151,8 +190,14 @@ public class BookingService implements CreateBookingUseCase, BookingQueries, Exp
                     continue;
                 }
                 booking.expire(now);
-                bookings.save(booking);
+                tx.executeWithoutResult(status -> {
+                    bookings.save(booking);
+                    events.bookingCancelled(booking, "PAYMENT_TIMEOUT", Money.zero(booking.getTotalPrice().currency()));
+                });
                 releaseQuietly(booking.getHoldId());
+                if (booking.getPaymentId() != null) {
+                    cancelPaymentQuietly(booking.getPaymentId());
+                }
                 expired++;
                 LOG.info("Booking {} expired: not paid before the seat hold ran out", reference);
             } catch (ConcurrencyFailureException ex) {
@@ -170,6 +215,14 @@ public class BookingService implements CreateBookingUseCase, BookingQueries, Exp
             inventory.releaseHold(holdId);
         } catch (RuntimeException ex) {
             LOG.warn("Could not release hold {}; it will expire on its own: {}", holdId, ex.toString());
+        }
+    }
+
+    private void cancelPaymentQuietly(String paymentId) {
+        try {
+            payments.cancelPayment(paymentId);
+        } catch (RuntimeException ex) {
+            LOG.warn("Could not cancel payment {}; it stays unpaid: {}", paymentId, ex.toString());
         }
     }
 

@@ -144,6 +144,32 @@ class BookingApiTest extends BookingTestSupport {
     }
 
     @Test
+    void servicingEndpointsEnforceRolesAndBookingState() {
+        String reference = createBooking("cust-j", 15L, "create-key-0011");
+
+        given().header("Authorization", bearer("cust-j", Roles.CUSTOMER))
+                .when().get("/api/v1/bookings/{ref}/cancellation-quote", reference)
+                .then().statusCode(422).body("code", equalTo("NOT_CANCELLABLE"));
+        given().header("Authorization", bearer("cust-j", Roles.CUSTOMER))
+                .when().post("/api/v1/bookings/{ref}/cancellation", reference)
+                .then().statusCode(422).body("code", equalTo("NOT_CANCELLABLE"));
+        given().header("Authorization", bearer("cust-j", Roles.CUSTOMER)).header("Idempotency-Key", "change-key-0001")
+                .contentType(ContentType.JSON).body("{\"newFlightId\":16,\"seatNumbers\":[\"1A\",\"1B\"]}")
+                .when().post("/api/v1/bookings/{ref}/date-change", reference)
+                .then().statusCode(422).body("code", equalTo("NOT_CHANGEABLE"));
+
+        String refund = "{\"amount\":{\"amount\":10,\"currency\":\"USD\"},\"note\":\"goodwill\"}";
+        given().header("Authorization", bearer("agent-3", Roles.AGENT)).header("Idempotency-Key", "manual-key-0001")
+                .contentType(ContentType.JSON).body(refund)
+                .when().post("/api/v1/admin/bookings/{ref}/refunds", reference)
+                .then().statusCode(403);
+        given().header("Authorization", bearer("admin-3", Roles.ADMIN)).header("Idempotency-Key", "manual-key-0002")
+                .contentType(ContentType.JSON).body(refund)
+                .when().post("/api/v1/admin/bookings/{ref}/refunds", reference)
+                .then().statusCode(422).body("code", equalTo("REFUND_EXCEEDS_PAYMENT"));
+    }
+
+    @Test
     void requestsWithoutTokenOrWithInvalidDataAreRejected() {
         given().when().get("/api/v1/bookings").then().statusCode(401).body("code", equalTo("UNAUTHENTICATED"));
 

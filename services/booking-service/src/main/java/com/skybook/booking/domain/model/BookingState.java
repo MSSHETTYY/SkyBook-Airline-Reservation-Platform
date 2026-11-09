@@ -24,6 +24,7 @@ public record BookingState(
         String paymentClientSecret,
         Money amountPaid,
         Money amountRefunded,
+        Money cancellationRefund,
         PendingChange pendingChange,
         String idempotencyKey,
         String requestFingerprint,

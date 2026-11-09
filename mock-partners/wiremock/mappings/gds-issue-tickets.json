@@ -1,0 +1,15 @@
+{
+  "name": "GDS: issue e-tickets (one per passenger, 13-digit numbers)",
+  "priority": 10,
+  "request": {
+    "method": "POST",
+    "urlPath": "/gds/v1/tickets",
+    "headers": { "Idempotency-Key": { "matches": ".+" } }
+  },
+  "response": {
+    "status": 201,
+    "headers": { "Content-Type": "application/json" },
+    "body": "{\"ticketNumbers\":[{{#each (jsonPath request.body '$.passengers') as |p|}}\"176{{randomValue length=10 type='NUMERIC'}}\"{{#unless @last}},{{/unless}}{{/each}}]}",
+    "transformers": ["response-template"]
+  }
+}

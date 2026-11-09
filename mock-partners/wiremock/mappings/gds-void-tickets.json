@@ -1,0 +1,5 @@
+{
+  "name": "GDS: void tickets",
+  "request": { "method": "POST", "urlPath": "/gds/v1/tickets/void" },
+  "response": { "status": 204 }
+}

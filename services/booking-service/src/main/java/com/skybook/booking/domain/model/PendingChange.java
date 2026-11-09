@@ -15,9 +15,10 @@ import com.skybook.common.money.Money;
  * @param newSeats       one entry per passenger, in passenger order
  * @param amountDue      fare difference plus change fee
  * @param paymentId      payment collecting {@code amountDue}
+ * @param paid           whether that payment has been received (the change is then applied by the saga)
  */
 public record PendingChange(FlightSnapshot newFlight, String holdId, Instant holdExpiresAt,
-                            List<SeatAssignment> newSeats, Money amountDue, String paymentId) {
+                            List<SeatAssignment> newSeats, Money amountDue, String paymentId, boolean paid) {
 
     /** New seat and its price for one passenger. */
     public record SeatAssignment(String seatNumber, Money price) {
@@ -32,6 +33,10 @@ public record PendingChange(FlightSnapshot newFlight, String holdId, Instant hol
     }
 
     public PendingChange withPayment(String id) {
-        return new PendingChange(newFlight, holdId, holdExpiresAt, newSeats, amountDue, id);
+        return new PendingChange(newFlight, holdId, holdExpiresAt, newSeats, amountDue, id, false);
+    }
+
+    PendingChange markPaid() {
+        return new PendingChange(newFlight, holdId, holdExpiresAt, newSeats, amountDue, paymentId, true);
     }
 }

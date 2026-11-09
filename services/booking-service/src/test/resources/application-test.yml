@@ -5,6 +5,11 @@ spring:
     url: jdbc:h2:mem:booking;MODE=MariaDB;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1
     username: sa
     password: ""
+  kafka:
+    bootstrap-servers: ${spring.embedded.kafka.brokers:localhost:9}
+    listener:
+      # Only the Kafka integration tests start listeners (they provide an embedded broker).
+      auto-startup: false
   jpa:
     hibernate:
       # H2 type names differ from MariaDB; schema validation runs against real MariaDB in *IT tests.
@@ -21,9 +26,29 @@ skybook:
     inventory:
       oauth2-registration-id: ""
       read-timeout: 1s
+    clients:
+      payment:
+        oauth2-registration-id: ""
+        read-timeout: 1s
+      gds:
+        read-timeout: 1s
+      crm:
+        read-timeout: 500ms
+      loyalty:
+        read-timeout: 500ms
+  messaging:
+    lock-clause: FOR UPDATE
 
 resilience4j:
   retry:
     instances:
       inventory:
+        wait-duration: 10ms
+      payment:
+        wait-duration: 10ms
+      gds:
+        wait-duration: 10ms
+      crm:
+        wait-duration: 10ms
+      loyalty:
         wait-duration: 10ms

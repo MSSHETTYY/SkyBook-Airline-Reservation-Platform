@@ -29,6 +29,22 @@ spring:
           time_zone: UTC
   flyway:
     enabled: true
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      properties:
+        enable.idempotence: true
+    consumer:
+      group-id: booking-service
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      properties:
+        # Commit only after the listener (and its database transaction) succeeded.
+        enable.auto.commit: false
   security:
     oauth2:
       resourceserver:
@@ -69,6 +85,21 @@ skybook:
       dev1: ${CRYPTO_KEY_DEV1:ZGV2LW9ubHkta2V5LWZvci1sb2NhbC1za3lib29rISE=}
   booking:
     expiry-interval: PT30S
+    saga-recovery-interval: PT30S
+    clients:
+      payment:
+        base-url: ${PAYMENT_BASE_URL:http://localhost:8083}
+        read-timeout: 5s
+        oauth2-registration-id: skybook-services
+      gds:
+        base-url: ${GDS_BASE_URL:http://localhost:8095}
+        read-timeout: 4s
+      crm:
+        base-url: ${CRM_BASE_URL:http://localhost:8095}
+        read-timeout: 1s
+      loyalty:
+        base-url: ${LOYALTY_BASE_URL:http://localhost:8095}
+        read-timeout: 1s
     inventory:
       base-url: ${INVENTORY_BASE_URL:http://localhost:8081}
       connect-timeout: 2s
@@ -87,6 +118,15 @@ resilience4j:
         permitted-number-of-calls-in-half-open-state: 3
         record-exceptions:
           - com.skybook.booking.adapter.out.inventory.InventoryUnavailableException
+    configs:
+      default:
+        sliding-window-size: 20
+        minimum-number-of-calls: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 15s
+        permitted-number-of-calls-in-half-open-state: 3
+        record-exceptions:
+          - com.skybook.booking.adapter.out.support.RemoteCall$Unavailable
   retry:
     instances:
       inventory:
@@ -96,3 +136,44 @@ resilience4j:
         exponential-backoff-multiplier: 2
         retry-exceptions:
           - com.skybook.booking.adapter.out.inventory.InventoryUnavailableException
+      payment:
+        max-attempts: 3
+        wait-duration: 300ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        retry-exceptions:
+          - com.skybook.booking.adapter.out.support.RemoteCall$Unavailable
+      gds:
+        max-attempts: 3
+        wait-duration: 500ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        retry-exceptions:
+          - com.skybook.booking.adapter.out.support.RemoteCall$Unavailable
+      crm:
+        # Customer-facing path with a safe fallback: one quick retry, then STANDARD tier.
+        max-attempts: 2
+        wait-duration: 100ms
+        retry-exceptions:
+          - com.skybook.booking.adapter.out.support.RemoteCall$Unavailable
+      loyalty:
+        max-attempts: 2
+        wait-duration: 200ms
+        retry-exceptions:
+          - com.skybook.booking.adapter.out.support.RemoteCall$Unavailable
+  bulkhead:
+    instances:
+      # Caps concurrent calls per partner so one slow partner cannot exhaust request/consumer threads.
+      payment:
+        max-concurrent-calls: 25
+        max-wait-duration: 200ms
+      gds:
+        max-concurrent-calls: 10
+        max-wait-duration: 200ms
+      crm:
+        max-concurrent-calls: 20
+        max-wait-duration: 0ms
+      loyalty:
+        max-concurrent-calls: 5
+        max-wait-duration: 0ms
+

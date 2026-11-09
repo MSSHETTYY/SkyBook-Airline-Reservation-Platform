@@ -44,6 +44,22 @@ public final class InventoryStubs {
         return holdId;
     }
 
+    /** Stubs payment creation, hold confirmation, GDS ticketing and loyalty for a full happy-path saga. */
+    public static void stubSagaPartners(WireMockServer server, String paymentId, List<String> tickets) {
+        server.stubFor(post(urlPathEqualTo("/api/v1/payments")).willReturn(aResponse().withStatus(201)
+                .withHeader("Content-Type", "application/json").withBody("""
+                        {"paymentId":"%s","bookingReference":"AAAAAA","purpose":"BOOKING","status":"REQUIRES_PAYMENT",
+                         "amount":{"amount":220.00,"currency":"USD"},"amountRefunded":{"amount":0,"currency":"USD"},
+                         "clientSecret":"%s_secret","createdAt":"2026-12-01T08:00:00Z"}"""
+                        .formatted(paymentId, paymentId))));
+        server.stubFor(post(urlPathMatching("/api/v1/holds/.*/confirmation")).willReturn(aResponse().withStatus(200)
+                .withHeader("Content-Type", "application/json").withBody("{}")));
+        server.stubFor(post(urlPathEqualTo("/gds/v1/tickets")).willReturn(aResponse().withStatus(201)
+                .withHeader("Content-Type", "application/json")
+                .withBody("{\"ticketNumbers\":[\"" + String.join("\",\"", tickets) + "\"]}")));
+        server.stubFor(post(urlPathEqualTo("/loyalty/v1/accruals")).willReturn(aResponse().withStatus(202)));
+    }
+
     public static void stubSeatUnavailable(WireMockServer server, long flightId, String seat) {
         server.stubFor(post(urlPathEqualTo("/api/v1/flights/" + flightId + "/holds"))
                 .willReturn(aResponse().withStatus(409).withHeader("Content-Type", "application/problem+json")

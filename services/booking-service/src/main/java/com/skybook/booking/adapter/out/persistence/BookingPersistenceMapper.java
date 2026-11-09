@@ -42,6 +42,7 @@ final class BookingPersistenceMapper {
                 e.getPaymentClientSecret(),
                 Money.of(e.getAmountPaid(), currency),
                 Money.of(e.getAmountRefunded(), currency),
+                e.getCancellationRefund() == null ? null : Money.of(e.getCancellationRefund(), currency),
                 toDomain(e.getPendingChange(), currency),
                 e.getIdempotencyKey(),
                 e.getRequestFingerprint(),
@@ -66,7 +67,8 @@ final class BookingPersistenceMapper {
         e.setTotal(s.totalPrice().amount(), s.totalPrice().currencyCode());
         e.setHold(s.holdId(), s.holdExpiresAt());
         e.setPayment(s.paymentId(), s.paymentClientSecret());
-        e.setAmounts(s.amountPaid().amount(), s.amountRefunded().amount());
+        e.setAmounts(s.amountPaid().amount(), s.amountRefunded().amount(),
+                s.cancellationRefund() == null ? null : s.cancellationRefund().amount());
         e.setUpdatedAt(s.updatedAt());
 
         List<PassengerEntity> rows = e.getPassengers();
@@ -95,7 +97,7 @@ final class BookingPersistenceMapper {
             FlightSnapshot nf = change.newFlight();
             row.update(nf.flightId(), nf.flightNumber(), nf.origin(), nf.destination(), nf.departureTime(),
                     change.holdId(), change.holdExpiresAt(), encodeSeats(change.newSeats()),
-                    change.amountDue().amount(), change.paymentId());
+                    change.amountDue().amount(), change.paymentId(), change.paid());
             e.setPendingChange(row);
         }
     }
@@ -108,7 +110,7 @@ final class BookingPersistenceMapper {
                 new FlightSnapshot(row.getNewFlightId(), row.getNewFlightNumber(), row.getNewOrigin(),
                         row.getNewDestination(), row.getNewDepartureTime()),
                 row.getHoldId(), row.getHoldExpiresAt(), decodeSeats(row.getNewSeats(), currency),
-                Money.of(row.getAmountDue(), currency), row.getPaymentId());
+                Money.of(row.getAmountDue(), currency), row.getPaymentId(), row.isPaid());
     }
 
     static String encodeSeats(List<PendingChange.SeatAssignment> seats) {

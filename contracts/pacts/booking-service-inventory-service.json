@@ -1,0 +1,251 @@
+{
+  "consumer": {
+    "name": "booking-service"
+  },
+  "interactions": [
+    {
+      "description": "a request to hold two seats",
+      "key": "2f9c3e25",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a scheduled flight with seats 2A and 2B available"
+        }
+      ],
+      "request": {
+        "body": {
+          "content": {
+            "seatNumbers": [
+              "2A",
+              "2B"
+            ]
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "generators": {
+          "path": {
+            "dataType": "STRING",
+            "expression": "/api/v1/flights/${flightId}/holds",
+            "type": "ProviderState"
+          }
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ],
+          "Idempotency-Key": [
+            "bk-contract-key-0001"
+          ]
+        },
+        "matchingRules": {
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            },
+            "Idempotency-Key": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[A-Za-z0-9._:-]{8,64}"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/api/v1/flights/1/holds"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "departureTime": "2026-12-11T08:00:00Z",
+            "destination": "LHR",
+            "expiresAt": "2026-12-01T08:15:00Z",
+            "flightId": 1,
+            "flightNumber": "SB101",
+            "holdId": "e2490de5-5bd3-43d5-b7c4-526e33f71304",
+            "origin": "DXB",
+            "seats": [
+              {
+                "price": {
+                  "amount": 100.0,
+                  "currency": "USD"
+                },
+                "seatNumber": "2A"
+              },
+              {
+                "price": {
+                  "amount": 100.0,
+                  "currency": "USD"
+                },
+                "seatNumber": "2A"
+              }
+            ],
+            "status": "ACTIVE",
+            "totalPrice": {
+              "amount": 200.0,
+              "currency": "USD"
+            }
+          },
+          "contentType": "application/json; charset=UTF-8",
+          "encoded": false
+        },
+        "generators": {
+          "body": {
+            "$.holdId": {
+              "type": "Uuid"
+            }
+          }
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json; charset=UTF-8"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.departureTime": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.destination": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.expiresAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.flightId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.flightNumber": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.holdId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$.origin": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.seats": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 2
+                }
+              ]
+            },
+            "$.seats[*].price.amount": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "decimal"
+                }
+              ]
+            },
+            "$.seats[*].price.currency": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.seats[*].seatNumber": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.totalPrice.amount": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "decimal"
+                }
+              ]
+            },
+            "$.totalPrice.currency": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json(;\\s?charset=[\\w\\-]+)?"
+                }
+              ]
+            }
+          }
+        },
+        "status": 201
+      },
+      "transport": "http",
+      "type": "Synchronous/HTTP"
+    }
+  ],
+  "metadata": {
+    "pact-jvm": {
+      "version": "4.7.7"
+    },
+    "pactSpecification": {
+      "version": "4.0"
+    }
+  },
+  "provider": {
+    "name": "inventory-service"
+  }
+}

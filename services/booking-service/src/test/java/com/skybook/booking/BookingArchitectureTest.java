@@ -25,14 +25,21 @@ class BookingArchitectureTest {
     @ArchTest
     static final ArchRule HEXAGON = onionArchitecture()
             .domainModels("..booking.domain.model..")
+            .domainServices("..booking.domain.policy..")
             .applicationServices("..booking.application..")
             .adapter("web", "..booking.adapter.in.web..")
             .adapter("scheduling", "..booking.adapter.in.scheduling..")
+            .adapter("messaging-in", "..booking.adapter.in.messaging..")
+            .adapter("payment", "..booking.adapter.out.payment..")
+            .adapter("partners", "..booking.adapter.out.partner..")
+            .adapter("messaging-out", "..booking.adapter.out.messaging..")
             .adapter("persistence", "..booking.adapter.out.persistence..")
             .adapter("inventory", "..booking.adapter.out.inventory..")
             .withOptionalLayers(true)
             // The composition root wires adapters to ports; that is its job.
-            .ignoreDependency(resideInAPackage("..booking.config.."), DescribedPredicate.alwaysTrue());
+            .ignoreDependency(resideInAPackage("..booking.config.."), DescribedPredicate.alwaysTrue())
+            // Shared resilience helper used by several outbound adapters (it maps remote errors to domain codes).
+            .ignoreDependency(resideInAPackage("..booking.adapter.out.support.."), DescribedPredicate.alwaysTrue());
 
     /** The domain is plain Java: no Spring, no JPA, no Jackson, no web. */
     @ArchTest

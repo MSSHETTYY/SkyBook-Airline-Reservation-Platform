@@ -76,7 +76,7 @@ abstract class AbstractBookingRepositoryTest extends BookingTestSupport {
                 NOW.plus(Duration.ofDays(12))), "hold-x", NOW.plus(Duration.ofMinutes(15)),
                 List.of(new PendingChange.SeatAssignment("3A", Money.of("150.00", "USD")),
                         new PendingChange.SeatAssignment("3B", Money.of("150.00", "USD"))),
-                Money.of("90.00", "USD"), "pay-2"), NOW);
+                Money.of("90.00", "USD"), "pay-2", false), "secret", NOW);
         repository.save(booking);
 
         Booking loaded = repository.findByReference(booking.getReference().value()).orElseThrow();

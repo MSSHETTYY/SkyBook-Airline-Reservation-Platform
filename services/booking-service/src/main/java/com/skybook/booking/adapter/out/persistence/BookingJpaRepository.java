@@ -27,6 +27,15 @@ interface BookingJpaRepository extends JpaRepository<BookingEntity, Long> {
             """)
     Page<BookingEntity> search(@Param("status") String status, @Param("flightId") Long flightId, Pageable pageable);
 
+    /** Served by ix_booking_status_updated: sagas that have not progressed for a while. */
+    @Query("""
+            select b.reference from BookingEntity b
+            where b.status = :status and b.updatedAt <= :updatedBefore
+            order by b.updatedAt
+            """)
+    List<String> findReferencesNotUpdatedSince(@Param("status") String status,
+                                               @Param("updatedBefore") Instant updatedBefore, Limit limit);
+
     /** Served by ix_booking_status_hold_expiry. */
     @Query("""
             select b.reference from BookingEntity b

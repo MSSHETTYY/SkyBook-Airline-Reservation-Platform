@@ -1,0 +1,5 @@
+{
+  "name": "Loyalty: accrue miles (accepted asynchronously)",
+  "request": { "method": "POST", "urlPath": "/loyalty/v1/accruals" },
+  "response": { "status": 202, "fixedDelayMilliseconds": 150 }
+}

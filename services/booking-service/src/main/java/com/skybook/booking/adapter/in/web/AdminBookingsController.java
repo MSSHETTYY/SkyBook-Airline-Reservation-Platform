@@ -5,9 +5,12 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.skybook.booking.adapter.in.web.api.AdminBookingsApi;
+import com.skybook.booking.adapter.in.web.api.model.Booking;
 import com.skybook.booking.adapter.in.web.api.model.BookingPage;
 import com.skybook.booking.adapter.in.web.api.model.BookingStatus;
+import com.skybook.booking.adapter.in.web.api.model.ManualRefundRequest;
 import com.skybook.booking.application.port.in.BookingQueries;
+import com.skybook.booking.application.port.in.ManualRefundUseCase;
 import com.skybook.common.security.Roles;
 
 /** Booking servicing for agents and admins. */
@@ -15,9 +18,21 @@ import com.skybook.common.security.Roles;
 class AdminBookingsController implements AdminBookingsApi {
 
     private final BookingQueries queries;
+    private final ManualRefundUseCase refunds;
 
-    AdminBookingsController(BookingQueries queries) {
+    AdminBookingsController(BookingQueries queries, ManualRefundUseCase refunds) {
         this.queries = queries;
+        this.refunds = refunds;
+    }
+
+    @Override
+    @PreAuthorize(Roles.IS_ADMIN)
+    public ResponseEntity<Booking> issueManualRefund(String bookingReference, String idempotencyKey,
+                                                     ManualRefundRequest request) {
+        var amount = com.skybook.common.money.Money.of(request.getAmount().getAmount(),
+                request.getAmount().getCurrency());
+        return ResponseEntity.accepted().body(BookingApiMapper.toApi(
+                refunds.refund(bookingReference, amount, request.getNote(), idempotencyKey)));
     }
 
     @Override

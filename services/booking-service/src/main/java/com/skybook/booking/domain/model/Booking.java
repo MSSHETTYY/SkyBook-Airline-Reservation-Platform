@@ -34,6 +34,7 @@ public final class Booking {
     private String paymentClientSecret;
     private Money amountPaid;
     private Money amountRefunded;
+    private Money cancellationRefund;
     private PendingChange pendingChange;
     private final String idempotencyKey;
     private final String requestFingerprint;
@@ -56,6 +57,7 @@ public final class Booking {
         this.paymentClientSecret = s.paymentClientSecret();
         this.amountPaid = s.amountPaid() == null ? Money.zero(totalPrice.currency()) : s.amountPaid();
         this.amountRefunded = s.amountRefunded() == null ? Money.zero(totalPrice.currency()) : s.amountRefunded();
+        this.cancellationRefund = s.cancellationRefund();
         this.pendingChange = s.pendingChange();
         this.idempotencyKey = s.idempotencyKey();
         this.requestFingerprint = s.requestFingerprint();
@@ -75,7 +77,7 @@ public final class Booking {
         Money total = passengers.stream().map(Passenger::seatPrice).reduce(Money::plus).orElseThrow();
         return new Booking(new BookingState(null, reference, customerId, contactEmail, BookingStatus.PENDING_PAYMENT,
                 flight, passengers, total, Objects.requireNonNull(holdId, "holdId"),
-                Objects.requireNonNull(holdExpiresAt, "holdExpiresAt"), null, null, null, null, null,
+                Objects.requireNonNull(holdExpiresAt, "holdExpiresAt"), null, null, null, null, null, null,
                 idempotencyKey, requestFingerprint, now, now, 0));
     }
 
@@ -85,8 +87,8 @@ public final class Booking {
 
     public BookingState state() {
         return new BookingState(id, reference, customerId, contactEmail, status, flight, passengers, totalPrice, holdId,
-                holdExpiresAt, paymentId, paymentClientSecret, amountPaid, amountRefunded, pendingChange,
-                idempotencyKey, requestFingerprint, createdAt, updatedAt, version);
+                holdExpiresAt, paymentId, paymentClientSecret, amountPaid, amountRefunded, cancellationRefund,
+                pendingChange, idempotencyKey, requestFingerprint, createdAt, updatedAt, version);
     }
 
     /** Assigns the database id after the first save (identity column). */
@@ -171,7 +173,14 @@ public final class Booking {
 
     // ------------------------------------------------------------------ lifecycle: cancellation and refunds
 
-    public void requestCancellation(Instant now) {
+    /**
+     * Starts cancelling a confirmed booking. The refund promised now (per the fare rules at request time) is
+     * stored, so the amount cannot change while the refund is processed asynchronously.
+     */
+    public void requestCancellation(Money refund, Instant now) {
+        if (refund.isNegative() || refund.isGreaterThan(refundableAmount())) {
+            throw new IllegalArgumentException("Cancellation refund must be between 0 and " + refundableAmount());
+        }
         if (status != BookingStatus.CONFIRMED) {
             throw new SkyBookException(BookingErrorCode.NOT_CANCELLABLE,
                     "Booking %s is %s and cannot be cancelled".formatted(reference, status));
@@ -180,7 +189,14 @@ public final class Booking {
             throw new SkyBookException(BookingErrorCode.NOT_CANCELLABLE,
                     "Booking %s has already departed".formatted(reference));
         }
+        cancellationRefund = refund;
         transitionTo(BookingStatus.CANCELLATION_PENDING, now);
+    }
+
+    /** Whether all of the promised cancellation refund has been confirmed by payment-service. */
+    public boolean isCancellationRefundComplete() {
+        return status == BookingStatus.CANCELLATION_PENDING
+                && cancellationRefund != null && !cancellationRefund.isGreaterThan(amountRefunded);
     }
 
     public void markCancelled(Instant now) {
@@ -216,14 +232,44 @@ public final class Booking {
 
     // ------------------------------------------------------------------ lifecycle: date change
 
-    /** Starts a date change that requires the customer to pay {@code change.amountDue()} first. */
-    public void startPaidChange(PendingChange change, Instant now) {
+    /**
+     * Starts a date change that requires the customer to pay {@code change.amountDue()} first.
+     *
+     * @param clientSecret Stripe client secret of the change payment, shown to the customer until paid
+     */
+    public void startPaidChange(PendingChange change, String clientSecret, Instant now) {
         requireChangeable(now);
         if (!change.amountDue().isPositive()) {
             throw new IllegalArgumentException("A paid change needs a positive amount due");
         }
         pendingChange = change;
+        paymentClientSecret = clientSecret;
         transitionTo(BookingStatus.CHANGE_PENDING_PAYMENT, now);
+    }
+
+    /** The fare difference of the pending change was paid. Idempotent; returns whether anything changed. */
+    public boolean markChangePaid(String changePaymentId, Instant now) {
+        if (status != BookingStatus.CHANGE_PENDING_PAYMENT || !changePaymentId.equals(pendingChange.paymentId())) {
+            throw invalidState("record a change payment for");
+        }
+        if (pendingChange.paid()) {
+            return false;
+        }
+        pendingChange = pendingChange.markPaid();
+        paymentClientSecret = null;
+        updatedAt = now;
+        return true;
+    }
+
+    /** Throws unless the booking may be moved to another flight at {@code now}. */
+    public void ensureChangeable(Instant now) {
+        requireChangeable(now);
+    }
+
+    /** Whether a pending change was abandoned by the customer: its hold ran out before it was paid. */
+    public boolean isPendingChangeOverdue(Instant now) {
+        return status == BookingStatus.CHANGE_PENDING_PAYMENT && !pendingChange.paid()
+                && !pendingChange.holdExpiresAt().isAfter(now);
     }
 
     /**
@@ -256,6 +302,7 @@ public final class Booking {
             amountPaid = amountPaid.plus(additionalPayment);
         }
         pendingChange = null;
+        paymentClientSecret = null;
         transitionTo(BookingStatus.CONFIRMED, now);
         return previous;
     }
@@ -267,6 +314,7 @@ public final class Booking {
         }
         PendingChange abandoned = pendingChange;
         pendingChange = null;
+        paymentClientSecret = null;
         status = BookingStatus.CONFIRMED;
         updatedAt = now;
         return abandoned;
@@ -379,6 +427,14 @@ public final class Booking {
 
     public PendingChange getPendingChange() {
         return pendingChange;
+    }
+
+    public Money getCancellationRefund() {
+        return cancellationRefund;
+    }
+
+    public List<String> ticketNumbers() {
+        return passengers.stream().map(Passenger::ticketNumber).filter(Objects::nonNull).toList();
     }
 
     public Instant getCreatedAt() {

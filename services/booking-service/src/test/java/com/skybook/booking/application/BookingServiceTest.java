@@ -24,13 +24,17 @@ import java.util.SplittableRandom;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import com.skybook.booking.application.port.in.CreateBookingUseCase.CreateBookingCommand;
 import com.skybook.booking.application.port.in.CreateBookingUseCase.PassengerDetails;
 import com.skybook.booking.application.port.in.PageResult;
+import com.skybook.booking.application.port.out.BookingEventPublisher;
 import com.skybook.booking.application.port.out.BookingRepository;
 import com.skybook.booking.application.port.out.BookingRepository.DuplicateBookingException;
 import com.skybook.booking.application.port.out.InventoryPort;
+import com.skybook.booking.application.port.out.PaymentPort;
 import com.skybook.booking.application.service.BookingService;
 import com.skybook.booking.application.service.BookingServiceTestAccess;
 import com.skybook.booking.domain.model.Booking;
@@ -53,7 +57,10 @@ class BookingServiceTest {
     private final BookingRepository repository = mock(BookingRepository.class);
     private final InventoryPort inventory = mock(InventoryPort.class);
     private final MutableClock clock = new MutableClock(NOW);
-    private final BookingService service = new BookingService(repository, inventory, new SplittableRandom(7), clock);
+    private final PaymentPort payments = mock(PaymentPort.class);
+    private final BookingEventPublisher events = mock(BookingEventPublisher.class);
+    private final BookingService service = new BookingService(repository, inventory, payments, events,
+            new TransactionTemplate(mock(PlatformTransactionManager.class)), new SplittableRandom(7), clock);
 
     private final InventoryPort.SeatHold hold = new InventoryPort.SeatHold("hold-1",
             new FlightSnapshot(7L, "SB101", "DXB", "LHR", NOW.plus(Duration.ofDays(10))),
@@ -68,6 +75,8 @@ class BookingServiceTest {
 
     @BeforeEach
     void setUp() {
+        when(payments.createPayment(anyString(), any(), any(), anyString()))
+                .thenReturn(new PaymentPort.PaymentIntent("pay_123", "secret_123"));
         when(repository.findByCustomerAndIdempotencyKey(anyString(), anyString())).thenReturn(Optional.empty());
         when(repository.save(any())).thenAnswer(inv -> {
             Booking booking = inv.getArgument(0);
@@ -87,6 +96,10 @@ class BookingServiceTest {
         assertThat(booking.getPassengers().get(1).seatPrice()).isEqualTo(Money.of("110.00", "USD"));
         assertThat(booking.getHoldExpiresAt()).isEqualTo(NOW.plus(Duration.ofMinutes(15)));
         assertThat(booking.getFlight().flightNumber()).isEqualTo("SB101");
+        assertThat(booking.getPaymentId()).isEqualTo("pay_123");
+        assertThat(booking.getPaymentClientSecret()).isEqualTo("secret_123");
+        verify(events).bookingCreated(any());
+        verify(events).seatsHeld(any());
         verify(inventory).holdSeats(7L, List.of("12A", "12B"), BookingServiceTestAccess.inventoryKey(command));
     }
 
@@ -152,7 +165,8 @@ class BookingServiceTest {
                 .when(repository).save(any());
 
         assertThat(service.create(command).getStatus()).isEqualTo(BookingStatus.PENDING_PAYMENT);
-        verify(repository, times(2)).save(any());
+        // two attempts to insert (collision, success) + one update attaching the payment
+        verify(repository, times(3)).save(any());
     }
 
     @Test
@@ -162,12 +176,28 @@ class BookingServiceTest {
                 hold.flight(), List.of(new Passenger("Ada", "Lovelace", LocalDate.of(1990, 12, 10), "12A",
                         Money.of("100.00", "USD"), null)), "hold-1", hold.expiresAt(), "client-key-1",
                 BookingServiceTestAccess.fingerprint(command), NOW);
+        winner.attachPayment("pay_winner", "secret", NOW);
         doThrow(new DuplicateBookingException(true, null)).when(repository).save(any());
         when(repository.findByCustomerAndIdempotencyKey("customer-1", "client-key-1"))
                 .thenReturn(Optional.empty(), Optional.of(winner));
 
         assertThat(service.create(command)).isSameAs(winner);
         verify(inventory, never()).releaseHold(anyString());
+    }
+
+    @Test
+    void paymentOutageStillReturnsTheBookingAndARetryAttachesThePayment() {
+        when(inventory.holdSeats(anyLong(), anyCollection(), anyString())).thenReturn(hold);
+        when(payments.createPayment(anyString(), any(), any(), anyString()))
+                .thenThrow(new SkyBookException(CommonErrorCode.SERVICE_UNAVAILABLE, "payments down"))
+                .thenReturn(new PaymentPort.PaymentIntent("pay_late", "secret_late"));
+
+        Booking first = service.create(command);
+        assertThat(first.getPaymentId()).isNull();
+        assertThat(first.getStatus()).isEqualTo(BookingStatus.PENDING_PAYMENT);
+
+        when(repository.findByCustomerAndIdempotencyKey("customer-1", "client-key-1")).thenReturn(Optional.of(first));
+        assertThat(service.create(command).getPaymentId()).isEqualTo("pay_late");
     }
 
     @Test
@@ -207,6 +237,8 @@ class BookingServiceTest {
         assertThat(service.expireOverdue(later)).isEqualTo(1);
         assertThat(booking.getStatus()).isEqualTo(BookingStatus.EXPIRED);
         verify(inventory).releaseHold("hold-1");
+        verify(payments).cancelPayment("pay_123");
+        verify(events).bookingCancelled(any(), eq("PAYMENT_TIMEOUT"), any());
     }
 
     @Test

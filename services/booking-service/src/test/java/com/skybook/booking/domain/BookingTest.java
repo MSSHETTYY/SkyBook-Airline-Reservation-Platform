@@ -135,9 +135,11 @@ class BookingTest {
     void cancellationOfConfirmedBookingsAndRefundLimits() {
         Booking booking = confirmedBooking();
 
-        booking.requestCancellation(NOW);
+        booking.requestCancellation(Money.of("200.00", "USD"), NOW);
         assertThat(booking.getStatus()).isEqualTo(BookingStatus.CANCELLATION_PENDING);
+        assertThat(booking.isCancellationRefundComplete()).isFalse();
         booking.recordRefund(Money.of("200.00", "USD"), NOW);
+        assertThat(booking.isCancellationRefundComplete()).isTrue();
         assertThat(booking.refundableAmount()).isEqualTo(Money.of("10.00", "USD"));
         assertThatThrownBy(() -> booking.recordRefund(Money.of("10.01", "USD"), NOW))
                 .hasFieldOrPropertyWithValue("errorCode", BookingErrorCode.REFUND_EXCEEDS_PAYMENT);
@@ -148,9 +150,10 @@ class BookingTest {
 
     @Test
     void cannotCancelUnconfirmedOrDepartedBookings() {
-        assertThatThrownBy(() -> newBooking().requestCancellation(NOW))
+        assertThatThrownBy(() -> newBooking().requestCancellation(Money.of("0", "USD"), NOW))
                 .hasFieldOrPropertyWithValue("errorCode", BookingErrorCode.NOT_CANCELLABLE);
-        assertThatThrownBy(() -> confirmedBooking().requestCancellation(FLIGHT.departureTime()))
+        assertThatThrownBy(() -> confirmedBooking().requestCancellation(Money.of("1", "USD"),
+                FLIGHT.departureTime()))
                 .hasFieldOrPropertyWithValue("errorCode", BookingErrorCode.NOT_CANCELLABLE);
     }
 
@@ -188,10 +191,16 @@ class BookingTest {
     void paidDateChangeWaitsForPaymentThenApplies() {
         Booking booking = confirmedBooking();
         PendingChange change = new PendingChange(OTHER_FLIGHT, "hold-2", NOW.plus(Duration.ofMinutes(15)),
-                List.of(seat("3A", "150.00"), seat("3B", "150.00")), Money.of("140.00", "USD"), null)
+                List.of(seat("3A", "150.00"), seat("3B", "150.00")), Money.of("140.00", "USD"), null, false)
                 .withPayment("pay-2");
 
-        booking.startPaidChange(change, NOW);
+        booking.startPaidChange(change, "change-secret", NOW);
+        assertThat(booking.getPaymentClientSecret()).isEqualTo("change-secret");
+        assertThatThrownBy(() -> booking.markChangePaid("pay-other", NOW))
+                .hasFieldOrPropertyWithValue("errorCode", BookingErrorCode.INVALID_STATE);
+        assertThat(booking.markChangePaid("pay-2", NOW)).isTrue();
+        assertThat(booking.markChangePaid("pay-2", NOW)).isFalse();
+        assertThat(booking.getPendingChange().paid()).isTrue();
         assertThat(booking.getStatus()).isEqualTo(BookingStatus.CHANGE_PENDING_PAYMENT);
         assertThat(booking.getPendingChange().paymentId()).isEqualTo("pay-2");
 
@@ -206,8 +215,9 @@ class BookingTest {
     void abandonedChangeRestoresTheConfirmedBooking() {
         Booking booking = confirmedBooking();
         PendingChange change = new PendingChange(OTHER_FLIGHT, "hold-2", NOW, List.of(seat("3A", "1"),
-                seat("3B", "1")), Money.of("10.00", "USD"), "pay-2");
-        booking.startPaidChange(change, NOW);
+                seat("3B", "1")), Money.of("10.00", "USD"), "pay-2", false);
+        booking.startPaidChange(change, "secret", NOW);
+        assertThat(booking.isPendingChangeOverdue(NOW)).isTrue();
 
         assertThat(booking.abandonChange(NOW)).isEqualTo(change);
         assertThat(booking.getStatus()).isEqualTo(BookingStatus.CONFIRMED);
@@ -219,10 +229,13 @@ class BookingTest {
     @Test
     void changesAreRejectedWhenNotAllowed() {
         assertThatThrownBy(() -> newBooking().startPaidChange(new PendingChange(OTHER_FLIGHT, "h", NOW,
-                List.of(), Money.of("1", "USD"), null), NOW))
+                List.of(), Money.of("1", "USD"), null, false), null, NOW))
                 .hasFieldOrPropertyWithValue("errorCode", BookingErrorCode.NOT_CHANGEABLE);
         assertThatIllegalArgumentException().isThrownBy(() -> confirmedBooking().startPaidChange(
-                new PendingChange(OTHER_FLIGHT, "h", NOW, List.of(), Money.of("0", "USD"), null), NOW));
+                new PendingChange(OTHER_FLIGHT, "h", NOW, List.of(), Money.of("0", "USD"), null, false), null,
+                NOW));
+        assertThatIllegalArgumentException().isThrownBy(() -> confirmedBooking().requestCancellation(
+                Money.of("999.00", "USD"), NOW));
         assertThatThrownBy(() -> newBooking().applyChange(OTHER_FLIGHT, "h", List.of(), Money.of("0", "USD"),
                 List.of(), NOW)).hasFieldOrPropertyWithValue("errorCode", BookingErrorCode.INVALID_STATE);
         assertThatIllegalArgumentException().isThrownBy(() -> confirmedBooking().applyChange(OTHER_FLIGHT, "h",

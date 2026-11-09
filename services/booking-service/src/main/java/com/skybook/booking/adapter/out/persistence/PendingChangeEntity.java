@@ -56,6 +56,9 @@ class PendingChangeEntity {
     @Column(name = "payment_id")
     private String paymentId;
 
+    @Column(nullable = false)
+    private boolean paid;
+
     protected PendingChangeEntity() {
         // for JPA
     }
@@ -104,9 +107,14 @@ class PendingChangeEntity {
         return paymentId;
     }
 
+    boolean isPaid() {
+        return paid;
+    }
+
     @SuppressWarnings("checkstyle:ParameterNumber")
     void update(Long flightId, String flightNumber, String origin, String destination, Instant departure,
-                String newHoldId, Instant newHoldExpiresAt, String seats, BigDecimal due, String newPaymentId) {
+                String newHoldId, Instant newHoldExpiresAt, String seats, BigDecimal due, String newPaymentId,
+                boolean isPaid) {
         this.newFlightId = flightId;
         this.newFlightNumber = flightNumber;
         this.newOrigin = origin;
@@ -117,5 +125,6 @@ class PendingChangeEntity {
         this.newSeats = seats;
         this.amountDue = due;
         this.paymentId = newPaymentId;
+        this.paid = isPaid;
     }
 }

@@ -92,6 +92,12 @@ class JpaBookingRepository implements BookingRepository {
         return jpa.findReferencesWithHoldExpiredBefore(status.name(), now, Limit.of(limit));
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<String> findNotUpdatedSince(BookingStatus status, Instant updatedBefore, int limit) {
+        return jpa.findReferencesNotUpdatedSince(status.name(), updatedBefore, Limit.of(limit));
+    }
+
     private static PageResult<Booking> toPageResult(Page<BookingEntity> page) {
         return new PageResult<>(page.getContent().stream().map(BookingPersistenceMapper::toDomain).toList(),
                 page.getNumber(), page.getSize(), page.getTotalElements());

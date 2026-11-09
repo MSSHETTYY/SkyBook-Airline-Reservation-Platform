@@ -1,0 +1,10 @@
+{
+  "name": "GDS fault injection: flight SB999 always fails with 503 (demonstrates retry, circuit breaker, compensation)",
+  "priority": 1,
+  "request": {
+    "method": "POST",
+    "urlPath": "/gds/v1/tickets",
+    "bodyPatterns": [ { "matchesJsonPath": "$[?(@.flightNumber == 'SB999')]" } ]
+  },
+  "response": { "status": 503, "headers": { "Content-Type": "application/json" }, "body": "{\"error\":\"GDS unavailable\"}" }
+}

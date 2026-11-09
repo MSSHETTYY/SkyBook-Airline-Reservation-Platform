@@ -1,0 +1,15 @@
+{
+  "name": "GDS fault injection: flight SB998 answers after 6 s (beyond the 4 s read timeout)",
+  "priority": 1,
+  "request": {
+    "method": "POST",
+    "urlPath": "/gds/v1/tickets",
+    "bodyPatterns": [ { "matchesJsonPath": "$[?(@.flightNumber == 'SB998')]" } ]
+  },
+  "response": {
+    "status": 201,
+    "fixedDelayMilliseconds": 6000,
+    "headers": { "Content-Type": "application/json" },
+    "body": "{\"ticketNumbers\":[\"1760000000000\"]}"
+  }
+}

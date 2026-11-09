@@ -29,6 +29,9 @@ public interface BookingRepository {
     /** References of bookings in {@code status} whose seat hold expired at or before {@code now}. */
     List<String> findWithHoldExpiredBefore(BookingStatus status, Instant now, int limit);
 
+    /** References of bookings in {@code status} whose last change was at or before {@code updatedBefore}. */
+    List<String> findNotUpdatedSince(BookingStatus status, Instant updatedBefore, int limit);
+
     /** Thrown when a unique constraint (reference or idempotency key) is violated. */
     final class DuplicateBookingException extends RuntimeException {
 

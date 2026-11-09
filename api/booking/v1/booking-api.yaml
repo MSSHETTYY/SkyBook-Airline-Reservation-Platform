@@ -72,6 +72,86 @@ paths:
               schema: { $ref: '#/components/schemas/Booking' }
         '404': { $ref: '#/components/responses/Problem' }
 
+  /api/v1/bookings/{bookingReference}/cancellation-quote:
+    get:
+      tags: [Bookings]
+      operationId: getCancellationQuote
+      summary: How much would be refunded if the booking were cancelled now
+      parameters:
+        - $ref: '#/components/parameters/BookingReference'
+      responses:
+        '200':
+          description: Refund quote according to the fare rules
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CancellationQuote' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+
+  /api/v1/bookings/{bookingReference}/cancellation:
+    post:
+      tags: [Bookings]
+      operationId: cancelBooking
+      summary: Cancel a confirmed booking; tickets are voided, seats released and the refund issued
+      parameters:
+        - $ref: '#/components/parameters/BookingReference'
+      responses:
+        '202':
+          description: Cancellation accepted (CANCELLATION_PENDING until the refund completes, or CANCELLED)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Booking' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+
+  /api/v1/bookings/{bookingReference}/date-change:
+    post:
+      tags: [Bookings]
+      operationId: changeBookingDate
+      summary: Move a confirmed booking to another flight; any fare difference is charged or refunded
+      parameters:
+        - $ref: '#/components/parameters/BookingReference'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DateChangeRequest' }
+      responses:
+        '200':
+          description: |
+            CONFIRMED when no payment is due (already applied), or CHANGE_PENDING_PAYMENT with the payment to
+            complete for the fare difference
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Booking' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+        '503': { $ref: '#/components/responses/Problem' }
+
+  /api/v1/admin/bookings/{bookingReference}/refunds:
+    post:
+      tags: [AdminBookings]
+      operationId: issueManualRefund
+      summary: Issue a goodwill or correction refund (admins only)
+      parameters:
+        - $ref: '#/components/parameters/BookingReference'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ManualRefundRequest' }
+      responses:
+        '202':
+          description: Refund requested; the booking records it when payment-service reports RefundIssued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Booking' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+
   /api/v1/admin/bookings:
     get:
       tags: [AdminBookings]
@@ -211,6 +291,10 @@ components:
           format: date-time
           description: Payment deadline; present while status is PENDING_PAYMENT
         payment: { $ref: '#/components/schemas/PaymentInfo' }
+        amountPaid: { $ref: '#/components/schemas/Money' }
+        amountRefunded: { $ref: '#/components/schemas/Money' }
+        changeAmountDue:
+          $ref: '#/components/schemas/Money'
         createdAt: { type: string, format: date-time }
 
     BookingPage:
@@ -223,6 +307,34 @@ components:
         page: { type: integer }
         size: { type: integer }
         totalElements: { type: integer, format: int64 }
+
+    CancellationQuote:
+      type: object
+      required: [bookingReference, refundAmount, refundPercentage, rule]
+      properties:
+        bookingReference: { type: string }
+        refundAmount: { $ref: '#/components/schemas/Money' }
+        refundPercentage: { type: integer, minimum: 0, maximum: 100 }
+        rule: { type: string, example: 'At least 7 days before departure: full refund' }
+
+    DateChangeRequest:
+      type: object
+      required: [newFlightId, seatNumbers]
+      properties:
+        newFlightId: { type: integer, format: int64, minimum: 1 }
+        seatNumbers:
+          type: array
+          description: One seat per passenger, in passenger order
+          minItems: 1
+          maxItems: 9
+          items: { type: string, pattern: '^[0-9]{1,2}[A-K]$' }
+
+    ManualRefundRequest:
+      type: object
+      required: [amount, note]
+      properties:
+        amount: { $ref: '#/components/schemas/Money' }
+        note: { type: string, minLength: 3, maxLength: 200 }
 
     Problem:
       type: object

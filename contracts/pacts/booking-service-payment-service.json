@@ -1,0 +1,257 @@
+{
+  "consumer": {
+    "name": "booking-service"
+  },
+  "interactions": [
+    {
+      "description": "a request to create a booking payment",
+      "key": "6f01eead",
+      "pending": false,
+      "request": {
+        "body": {
+          "content": {
+            "amount": {
+              "amount": 220.0,
+              "currency": "USD"
+            },
+            "bookingReference": "PCTAAA",
+            "purpose": "BOOKING"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ],
+          "Idempotency-Key": [
+            "booking-PCTAAA"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.amount.amount": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "decimal"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            },
+            "Idempotency-Key": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[A-Za-z0-9._:-]{8,64}"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/api/v1/payments"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "bookingReference": "PCTAAA",
+            "clientSecret": "pi_fake_123_secret_456",
+            "paymentId": "pay_0123456789abcdef0123456789abcdef",
+            "status": "REQUIRES_PAYMENT"
+          },
+          "contentType": "application/json; charset=UTF-8",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json; charset=UTF-8"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.clientSecret": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.paymentId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "pay_[A-Za-z0-9]{20,40}"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json(;\\s?charset=[\\w\\-]+)?"
+                }
+              ]
+            }
+          }
+        },
+        "status": 201
+      },
+      "transport": "http",
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "description": "a request to refund part of a booking",
+      "key": "aa288721",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "booking PCTBBB has a successful payment of 200.00 USD"
+        }
+      ],
+      "request": {
+        "body": {
+          "content": {
+            "amount": {
+              "amount": 50.0,
+              "currency": "USD"
+            },
+            "bookingReference": "PCTBBB",
+            "reason": "CUSTOMER_CANCELLATION"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ],
+          "Idempotency-Key": [
+            "cancel-PCTBBB"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.amount.amount": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "decimal"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            },
+            "Idempotency-Key": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[A-Za-z0-9._:-]{8,64}"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/api/v1/payments/refunds"
+      },
+      "response": {
+        "body": {
+          "content": [
+            {
+              "refundId": "re_123",
+              "status": "SUCCEEDED"
+            }
+          ],
+          "contentType": "application/json; charset=UTF-8",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json; charset=UTF-8"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$[*].refundId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$[*].status": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json(;\\s?charset=[\\w\\-]+)?"
+                }
+              ]
+            }
+          }
+        },
+        "status": 201
+      },
+      "transport": "http",
+      "type": "Synchronous/HTTP"
+    }
+  ],
+  "metadata": {
+    "pact-jvm": {
+      "version": "4.7.7"
+    },
+    "pactSpecification": {
+      "version": "4.0"
+    }
+  },
+  "provider": {
+    "name": "payment-service"
+  }
+}

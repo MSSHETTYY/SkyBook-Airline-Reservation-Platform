@@ -1,0 +1,10 @@
+{
+  "name": "CRM: customer profile; subjects ending in -gold are GOLD members, everyone else STANDARD",
+  "request": { "method": "GET", "urlPathPattern": "/crm/v1/customers/[^/]+" },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "body": "{\"customerId\":\"{{request.pathSegments.[3]}}\",\"tier\":\"{{#if (contains request.pathSegments.[3] '-gold')}}GOLD{{else}}STANDARD{{/if}}\"}",
+    "transformers": ["response-template"]
+  }
+}

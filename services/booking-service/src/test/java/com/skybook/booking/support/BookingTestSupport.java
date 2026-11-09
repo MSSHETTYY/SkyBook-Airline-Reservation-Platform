@@ -46,6 +46,9 @@ public abstract class BookingTestSupport {
     @DynamicPropertySource
     static void inventoryUrl(DynamicPropertyRegistry registry) {
         registry.add("skybook.booking.inventory.base-url", INVENTORY::baseUrl);
+        for (String client : new String[] {"payment", "gds", "crm", "loyalty"}) {
+            registry.add("skybook.booking.clients." + client + ".base-url", INVENTORY::baseUrl);
+        }
     }
 
     @AfterAll
