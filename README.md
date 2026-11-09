@@ -58,6 +58,9 @@ flowchart LR
 | Concern            | Approach                                                                              |
 |--------------------|---------------------------------------------------------------------------------------|
 | Consistency        | Database per service, an orchestrated saga in booking-service, a transactional outbox |
+| Delivery           | At-least-once Kafka events, idempotent consumers, per-consumer dead-letter topics |
+| Resilience         | Timeouts, retries with backoff, circuit breakers and bulkheads per partner; graceful fallbacks |
+| Security           | Keycloak OIDC (PKCE for the SPA), JWT on every service, method-level RBAC, mTLS, encrypted PII, Vault |
 | Seat allocation    | Decided only by inventory-service against Oracle, using optimistic locking and expiring holds |
 | Read scaling       | Seat maps and availability come from a Redis cache-aside read model, evicted after every committed change |
 | Errors             | RFC 9457 `application/problem+json` with a stable `code` and a `correlationId`        |
@@ -71,7 +74,15 @@ Decisions are recorded in [docs/adr](docs/adr):
 [0005 hexagonal booking](docs/adr/0005-hexagonal-booking-service.md) ·
 [0006 seat concurrency](docs/adr/0006-seat-allocation-concurrency.md) ·
 [0007 idempotency](docs/adr/0007-idempotency.md) ·
-[0008 API security](docs/adr/0008-api-security-model.md)
+[0008 API security](docs/adr/0008-api-security-model.md) ·
+[0009 PII encryption](docs/adr/0009-pii-encryption-at-rest.md) ·
+[0010 mTLS](docs/adr/0010-mutual-tls.md) ·
+[0011 secrets](docs/adr/0011-secrets-management.md) ·
+[0012 API gateway](docs/adr/0012-api-gateway.md) ·
+[0013 outbox](docs/adr/0013-transactional-outbox.md) ·
+[0014 booking saga](docs/adr/0014-booking-saga.md) ·
+[0015 resilience and contracts](docs/adr/0015-resilience-and-contracts.md) ·
+[0016 Solace for notifications](docs/adr/0016-solace-for-notifications.md)
 
 ## Repository layout
 
@@ -86,11 +97,17 @@ skybook/
 │   ├─ money/            Money value type (framework-free)
 │   ├─ security/         Keycloak role mapping, API security baseline, Caller
 │   └─ autoconfigure/    Spring Boot auto-configuration for servlet services
+├─ libs/messaging/       Transactional outbox + Kafka relay, idempotent consumers, dead-letter topics
 ├─ services/
+│   ├─ api-gateway/        Edge: routing, JWT, rate limiting, CORS, circuit breakers (Spring Cloud Gateway)
 │   ├─ inventory-service/  Flights, seats, holds, pricing (layered; Oracle + Redis)
-│   └─ booking-service/    Booking lifecycle (hexagonal; MariaDB)
+│   ├─ booking-service/    Booking lifecycle and saga orchestrator (hexagonal; MariaDB; Kafka)
+│   ├─ payment-service/    Stripe payments, webhooks, refunds (layered; MariaDB; Kafka)
+│   ├─ event-bridge/       Kafka domain events -> hierarchical Solace topics
+│   └─ notification-service/ E-mails from Solace (JMS) via Mailpit, audit trail in MongoDB
+├─ contracts/pacts/      Consumer-driven contracts (written by booking, verified by providers)
 ├─ mock-partners/        WireMock stubs for GDS, CRM and loyalty
-├─ infra/                Container init scripts
+├─ infra/                MariaDB init, Keycloak realm, Vault seed, dev certificate script
 ├─ config/checkstyle/    Code style rules
 ├─ docs/adr/             Architecture decision records
 ├─ compose.yaml          Local infrastructure, with profiles
@@ -144,13 +161,30 @@ The application services will use ports 8081-8085.
 |-------|--------------------------------------------------------------------------------------------|---------|
 | 0     | Monorepo, parent POM, common library, compose infrastructure, CI skeleton, ADRs            | Done    |
 | 1     | OpenAPI specs, inventory-service, booking-service (hexagonal), concurrency proof           | Done    |
-| 2     | Keycloak, api-gateway, RBAC, mTLS, encryption of personal data at rest, Vault              | Planned |
-| 3     | payment-service (Stripe), saga with compensations, outbox, DLTs, Resilience4j, Pact        | Planned |
-| 4     | notification-service (Solace JMS, Mailpit, MongoDB audit trail)                            | Planned |
+| 2     | Keycloak, api-gateway, RBAC, mTLS, encryption of personal data at rest, Vault              | Done    |
+| 3     | payment-service (Stripe), saga with compensations, outbox, DLTs, Resilience4j, Pact        | Done    |
+| 4     | notification-service (Solace JMS, Mailpit, MongoDB audit trail), Kafka-to-Solace bridge    | Done    |
 | 5     | web-ui (React + TS, accessible), Vitest/RTL, Playwright + axe                              | Planned |
 | 6     | Dockerfiles, Helm on kind, full CI/CD (SonarQube, Trivy, Newman, GHCR, deploy)             | Planned |
 | 7     | OpenTelemetry, Prometheus/Grafana SLOs, Loki, k6 load test, chaos tests, final docs        | Planned |
 | 8     | Optional: Spring AI booking assistant (Ollama), Expo mobile app                            | Planned |
+
+## Payments: Stripe test mode or the fake provider
+
+payment-service runs with a **fake provider** by default (`PAYMENT_PROVIDER=fake`), so the whole flow
+works without a Stripe account: the SPA calls `POST /api/v1/payments/{id}/simulation`, which produces a
+correctly signed Stripe-format webhook and sends it through the real webhook path.
+
+To use real Stripe **test mode**:
+
+1. Create a free Stripe account and copy the test keys (`sk_test_...`, `pk_test_...`) from the dashboard.
+2. Install the Stripe CLI and run `stripe listen --forward-to localhost:8080/api/v1/payments/webhooks/stripe`;
+   it prints the webhook signing secret (`whsec_...`).
+3. Start payment-service with `PAYMENT_PROVIDER=stripe`, `STRIPE_SECRET_KEY=sk_test_...` and
+   `STRIPE_WEBHOOK_SECRET=whsec_...` (or put them into Vault: `infra/vault/init-secrets.sh`).
+4. Pay with Stripe's test card `4242 4242 4242 4242`, any future date and any CVC.
+
+Card data never touches SkyBook: Stripe Elements sends it to Stripe directly (PCI-DSS SAQ A scope).
 
 ## Contributing
 

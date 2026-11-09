@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head><meta charset="UTF-8"><title>Complete your payment</title></head>
+<body style="margin:0;background:#f4f6fa;">
+<div th:replace="~{email/fragments :: header}"></div>
+<main style="font-family:Arial,sans-serif;color:#1a1a1a;padding:24px;">
+  <h1 style="font-size:22px;">Your seats are reserved</h1>
+  <p>We are holding your seats on flight <strong th:text="${flightNumber}">SB101</strong>
+     from <span th:text="${origin}">DXB</span> to <span th:text="${destination}">LHR</span>,
+     departing <span th:text="${departureTime}">2026-12-11T08:00:00Z</span> (UTC).</p>
+  <p>Total: <strong th:text="${totalAmount} + ' ' + ${currency}">220.00 USD</strong>.</p>
+  <p>Please complete your payment by <strong th:text="${paymentDueBy}">2026-12-01T08:15:00Z</strong> (UTC).
+     After that the seats are released.</p>
+</main>
+<div th:replace="~{email/fragments :: footer}"></div>
+</body>
+</html>

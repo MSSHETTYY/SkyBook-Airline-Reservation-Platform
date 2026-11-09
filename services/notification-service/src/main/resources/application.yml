@@ -1,0 +1,52 @@
+server:
+  port: 8084
+  shutdown: graceful
+
+spring:
+  application:
+    name: notification-service
+  data:
+    mongodb:
+      uri: ${MONGODB_URI:mongodb://root:mongo_root_dev@localhost:27017/notifications?authSource=admin}
+  mail:
+    host: ${SMTP_HOST:localhost}
+    port: ${SMTP_PORT:1025}
+    properties:
+      mail.smtp.connectiontimeout: 3000
+      mail.smtp.timeout: 5000
+      mail.smtp.writetimeout: 5000
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8180/realms/skybook}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+skybook:
+  notification:
+    queue: ${NOTIFICATION_QUEUE:q.notification}
+    from: "SkyBook <no-reply@skybook.example>"
+    store: mongo
+  solace:
+    host: ${SOLACE_HOST:tcp://localhost:55555}
+    vpn: ${SOLACE_VPN:default}
+    username: ${SOLACE_USERNAME:skybook}
+    password: ${SOLACE_PASSWORD:skybook_dev}
+
+resilience4j:
+  retry:
+    instances:
+      mail:
+        max-attempts: 3
+        wait-duration: 1s
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2

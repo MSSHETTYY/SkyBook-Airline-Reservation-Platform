@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head><meta charset="UTF-8"><title>Refund issued</title></head>
+<body style="margin:0;background:#f4f6fa;">
+<div th:replace="~{email/fragments :: header}"></div>
+<main style="font-family:Arial,sans-serif;color:#1a1a1a;padding:24px;">
+  <h1 style="font-size:22px;">We have issued a refund</h1>
+  <p>Amount: <strong th:text="${amount} + ' ' + ${currency}">50.00 USD</strong>.</p>
+  <p>It usually arrives on your original payment method within 5 to 10 business days.</p>
+</main>
+<div th:replace="~{email/fragments :: footer}"></div>
+</body>
+</html>

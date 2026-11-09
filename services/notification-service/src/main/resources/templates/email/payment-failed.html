@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head><meta charset="UTF-8"><title>Payment not completed</title></head>
+<body style="margin:0;background:#f4f6fa;">
+<div th:replace="~{email/fragments :: header}"></div>
+<main style="font-family:Arial,sans-serif;color:#1a1a1a;padding:24px;">
+  <h1 style="font-size:22px;">Your payment did not go through</h1>
+  <p>Reason given by the payment provider: <span th:text="${reason}">Your card was declined.</span></p>
+  <p>Your seats are still reserved for a short time. Please try again with another card in your booking.</p>
+</main>
+<div th:replace="~{email/fragments :: footer}"></div>
+</body>
+</html>

@@ -1,0 +1,18 @@
+spring:
+  artemis:
+    mode: embedded
+  mail:
+    host: localhost
+    port: 3025
+
+skybook:
+  solace:
+    enabled: false
+  notification:
+    store: memory
+
+resilience4j:
+  retry:
+    instances:
+      mail:
+        wait-duration: 10ms

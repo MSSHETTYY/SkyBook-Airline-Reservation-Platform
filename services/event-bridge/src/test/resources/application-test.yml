@@ -1,0 +1,11 @@
+spring:
+  kafka:
+    bootstrap-servers: ${spring.embedded.kafka.brokers}
+  artemis:
+    mode: embedded
+    embedded:
+      topics: ignored
+
+skybook:
+  solace:
+    enabled: false

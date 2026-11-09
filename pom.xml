@@ -29,6 +29,8 @@
         <module>services/booking-service</module>
         <module>services/payment-service</module>
         <module>services/api-gateway</module>
+        <module>services/event-bridge</module>
+        <module>services/notification-service</module>
     </modules>
 
     <properties>
@@ -95,7 +97,7 @@
             </dependency>
             <dependency>
                 <groupId>com.solacesystems</groupId>
-                <artifactId>sol-jms</artifactId>
+                <artifactId>sol-jms-jakarta</artifactId>
                 <version>${sol-jms.version}</version>
             </dependency>
             <dependency>

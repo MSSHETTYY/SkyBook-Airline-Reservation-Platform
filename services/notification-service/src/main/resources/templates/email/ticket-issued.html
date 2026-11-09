@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head><meta charset="UTF-8"><title>Your e-tickets</title></head>
+<body style="margin:0;background:#f4f6fa;">
+<div th:replace="~{email/fragments :: header}"></div>
+<main style="font-family:Arial,sans-serif;color:#1a1a1a;padding:24px;">
+  <h1 style="font-size:22px;">You are booked</h1>
+  <p>Flight <strong th:text="${flightNumber}">SB101</strong> from <span th:text="${origin}">DXB</span>
+     to <span th:text="${destination}">LHR</span>, departing <span th:text="${departureTime}">2026-12-11T08:00:00Z</span> (UTC).</p>
+  <h2 style="font-size:18px;">E-ticket numbers</h2>
+  <ul>
+    <li th:each="ticket : ${ticketNumbers}" th:text="${ticket}">1761111111111</li>
+  </ul>
+</main>
+<div th:replace="~{email/fragments :: footer}"></div>
+</body>
+</html>

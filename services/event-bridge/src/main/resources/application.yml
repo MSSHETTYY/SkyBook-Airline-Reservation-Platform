@@ -1,0 +1,39 @@
+server:
+  port: 8085
+  shutdown: graceful
+
+spring:
+  application:
+    name: event-bridge
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: event-bridge
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      properties:
+        enable.auto.commit: false
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+skybook:
+  messaging:
+    # No database here: only the codec and dead-letter handling of the messaging library are used.
+    enabled: false
+  solace:
+    host: ${SOLACE_HOST:tcp://localhost:55555}
+    vpn: ${SOLACE_VPN:default}
+    username: ${SOLACE_USERNAME:skybook}
+    password: ${SOLACE_PASSWORD:skybook_dev}

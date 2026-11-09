@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head><meta charset="UTF-8"><title>Booking cancelled</title></head>
+<body style="margin:0;background:#f4f6fa;">
+<div th:replace="~{email/fragments :: header}"></div>
+<main style="font-family:Arial,sans-serif;color:#1a1a1a;padding:24px;">
+  <h1 style="font-size:22px;">Your booking has been cancelled</h1>
+  <p th:switch="${reason}">
+    <span th:case="'PAYMENT_TIMEOUT'">The payment was not completed in time, so the reserved seats were released.</span>
+    <span th:case="'TICKETING_FAILED'">We could not issue your tickets. We are sorry for the inconvenience.</span>
+    <span th:case="*">The booking was cancelled as you requested.</span>
+  </p>
+  <p th:if="${refundAmount} > 0">A refund of <strong th:text="${refundAmount} + ' ' + ${currency}">200.00 USD</strong>
+     is on its way to your original payment method. It usually arrives within 5 to 10 business days.</p>
+</main>
+<div th:replace="~{email/fragments :: footer}"></div>
+</body>
+</html>
