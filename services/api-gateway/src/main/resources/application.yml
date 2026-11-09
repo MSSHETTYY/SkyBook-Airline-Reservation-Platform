@@ -82,6 +82,17 @@ spring:
                     name: payment
                     fallbackUri: forward:/fallback/unavailable
                     statusCodes: [502, 503, 504]
+            # Optional booking assistant (Phase 8, ADR-0021); a local LLM can take tens of seconds.
+            - id: assistant
+              uri: ${skybook.gateway.assistant-uri}
+              predicates:
+                - Path=/api/v1/assistant/**
+              filters:
+                - name: CircuitBreaker
+                  args:
+                    name: assistant
+                    fallbackUri: forward:/fallback/unavailable
+                    statusCodes: [502, 503, 504]
 
 management:
   metrics:
@@ -118,12 +129,17 @@ resilience4j:
       default:
         # Longer than the slowest legitimate call (booking creation with inventory retries).
         timeout-duration: 15s
+    instances:
+      assistant:
+        # LLM inference on CPU (Ollama) is slow; the assistant itself bounds tool calls to 3 s each.
+        timeout-duration: 60s
 
 skybook:
   gateway:
     inventory-uri: ${INVENTORY_URI:http://localhost:8081}
     booking-uri: ${BOOKING_URI:http://localhost:8082}
     payment-uri: ${PAYMENT_URI:http://localhost:8083}
+    assistant-uri: ${ASSISTANT_URI:http://localhost:8086}
     allowed-origins: ${ALLOWED_ORIGINS:http://localhost:5173}
     rate-limiter-bean: ${RATE_LIMITER_BEAN:redisRateLimiter}
     local-replenish-rate: 20

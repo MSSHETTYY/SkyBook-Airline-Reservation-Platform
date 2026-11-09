@@ -86,7 +86,8 @@ Decisions are recorded in [docs/adr](docs/adr):
 [0017 web UI](docs/adr/0017-web-ui-architecture.md) ·
 [0018 delivery and Kubernetes](docs/adr/0018-delivery-pipeline-and-kubernetes.md) ·
 [0019 observability](docs/adr/0019-observability.md) ·
-[0020 API versioning](docs/adr/0020-api-versioning.md)
+[0020 API versioning](docs/adr/0020-api-versioning.md) ·
+[0021 booking assistant](docs/adr/0021-booking-assistant.md)
 
 More documentation:
 - [C4 diagrams and the saga sequence](docs/architecture/c4.md)
@@ -156,6 +157,7 @@ Run one or two profiles at a time. [ADR-0003](docs/adr/0003-local-runtime-footpr
 | `partners`     | WireMock               | 256 MB       | Phase 3 onward   |
 | `apps`         | All services + web UI as containers | ~3.2 GB | Phase 6 onward |
 | `observability`| Jaeger, Prometheus, Loki, Alloy, Grafana | ~0.9 GB | Phase 7 onward |
+| `ai`           | Ollama + booking-assistant | ~3.5 GB | Phase 8 (optional) |
 
 ### Web UI
 
@@ -215,6 +217,18 @@ App containers send traces to Jaeger and ECS JSON logs to Loki. Grafana opens on
 overview and SLOs* dashboard, and log lines link to their traces. For services started from the IDE, set
 `MANAGEMENT_OPENTELEMETRY_TRACING_EXPORT_OTLP_ENDPOINT=http://localhost:4318/v1/traces`.
 
+### Booking assistant (optional, Phase 8)
+
+A read-only conversational assistant (Spring AI + a local Ollama model, ADR-0021). It searches flights,
+explains fare rules and looks up the caller's own bookings; it cannot change anything.
+
+```bash
+docker compose --profile ai up -d ollama
+docker compose --profile ai exec ollama ollama pull llama3.2:3b     # once, ~2 GB
+docker compose --profile ai up -d booking-assistant                 # needs inventory, booking, gateway, Keycloak
+curl -X POST localhost:8080/api/v1/assistant/messages -H "Authorization: Bearer $TOKEN"      -H "Content-Type: application/json" -d '{"message": "Flights from DXB to LHR next Monday?"}'
+```
+
 ### Ports
 
 | Port  | Component                        | Port  | Component                  |
@@ -228,6 +242,7 @@ overview and SLOs* dashboard, and log lines link to their traces. For services s
 | 5173  | web-ui dev server (Vite)         | 8088  | web-ui container (nginx)   |
 | 3000  | Grafana                          | 16686 | Jaeger UI                  |
 | 9090  | Prometheus                       | 3100  | Loki                       |
+| 8086  | booking-assistant                | 11434 | Ollama                     |
 
 The application services will use ports 8081-8085.
 
@@ -243,7 +258,7 @@ The application services will use ports 8081-8085.
 | 5     | web-ui (React + TS, accessible), Vitest/RTL, Playwright + axe                              | Done    |
 | 6     | Dockerfiles, Helm on kind, full CI/CD (SonarQube, Trivy, Newman, GHCR, deploy)             | Done    |
 | 7     | OpenTelemetry, Prometheus/Grafana SLOs, Loki, k6 load test, chaos tests, final docs        | Done    |
-| 8     | Optional: Spring AI booking assistant (Ollama), Expo mobile app                            | Planned |
+| 8     | Optional: Spring AI booking assistant (Ollama) - done; Expo mobile app - not started       | Partial |
 
 ## Payments: Stripe test mode or the fake provider
 

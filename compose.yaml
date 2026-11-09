@@ -437,6 +437,7 @@ services:
       INVENTORY_URI: http://inventory-service:8081
       BOOKING_URI: http://booking-service:8082
       PAYMENT_URI: http://payment-service:8083
+      ASSISTANT_URI: http://booking-assistant:8086
       REDIS_HOST: redis
       REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_dev}
       ALLOWED_ORIGINS: http://localhost:5173,http://localhost:8088
@@ -455,6 +456,31 @@ services:
       SKYBOOK_STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
     ports: ["8088:8080"]
 
+  # ------------------------------------------------------------------------------------------- AI
+  # Profile "ai" (Phase 8, ADR-0021): local LLM + booking assistant. Needs ~3 GB with llama3.2:3b, so
+  # stop other profiles first on an 8 GB machine. Pull the model once:
+  #   docker compose --profile ai exec ollama ollama pull llama3.2:3b
+  ollama:
+    <<: *defaults
+    image: ollama/ollama:0.12.10
+    profiles: [ai]
+    mem_limit: 3g
+    volumes:
+      - ollama-models:/root/.ollama
+    ports: ["11434:11434"]
+
+  booking-assistant:
+    <<: *app
+    profiles: [ai]
+    build: { context: ., dockerfile: services/Dockerfile, args: { SERVICE: booking-assistant } }
+    image: ghcr.io/msshettyy/skybook-booking-assistant:${SKYBOOK_TAG:-dev}
+    environment:
+      <<: *app-env
+      OLLAMA_BASE_URL: http://ollama:11434
+      INVENTORY_BASE_URL: http://inventory-service:8081
+      BOOKING_BASE_URL: http://booking-service:8082
+    ports: ["8086:8086"]
+
 networks:
   skybook:
     name: skybook
@@ -464,3 +490,4 @@ volumes:
   mariadb-data:
   mongo-data:
   keycloak-data:
+  ollama-models:

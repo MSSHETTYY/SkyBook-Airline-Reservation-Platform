@@ -24,3 +24,4 @@ skybook:
     inventory-uri: ${INVENTORY_URI:https://inventory-service:8081}
     booking-uri: ${BOOKING_URI:https://booking-service:8082}
     payment-uri: ${PAYMENT_URI:https://payment-service:8083}
+    assistant-uri: ${ASSISTANT_URI:https://booking-assistant:8086}

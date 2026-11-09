@@ -1,0 +1,80 @@
+openapi: 3.0.3
+info:
+  title: SkyBook Booking Assistant API
+  version: 1.0.0
+  description: |
+    Conversational help for customers, backed by a local LLM (Ollama) through Spring AI (ADR-0021).
+    The assistant can search flights, explain fare rules and look up the caller's own bookings. It
+    cannot change anything: it has no tools that book, pay, cancel or refund.
+
+    Errors are RFC 9457 `application/problem+json` documents with a stable `code`.
+servers:
+  - url: /
+tags:
+  - name: Assistant
+
+paths:
+  /api/v1/assistant/messages:
+    post:
+      tags: [Assistant]
+      operationId: sendMessage
+      summary: Send a message to the assistant and receive its reply
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AssistantRequest' }
+      responses:
+        '200':
+          description: The assistant's reply
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AssistantReply' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '401': { $ref: '#/components/responses/Problem' }
+        '503':
+          description: The language model is unavailable (code ASSISTANT_UNAVAILABLE)
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+components:
+  responses:
+    Problem:
+      description: Error (RFC 9457)
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+  schemas:
+    AssistantRequest:
+      type: object
+      required: [message]
+      properties:
+        conversationId:
+          type: string
+          format: uuid
+          description: Continue a conversation; omit to start a new one
+        message:
+          type: string
+          minLength: 1
+          maxLength: 1000
+
+    AssistantReply:
+      type: object
+      required: [conversationId, reply]
+      properties:
+        conversationId: { type: string, format: uuid }
+        reply: { type: string }
+
+    Problem:
+      type: object
+      properties:
+        type: { type: string, format: uri }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string, format: uri }
+        code: { type: string }
+        correlationId: { type: string }
+        timestamp: { type: string, format: date-time }
