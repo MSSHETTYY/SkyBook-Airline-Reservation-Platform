@@ -1,0 +1,52 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- $root := . -}}
+{{- range $name := include "skybook.enabledServices" . | fromJsonArray }}
+{{- $svc := include "skybook.svc" (list $root $name) | fromYaml }}
+---
+# Default deny for inbound traffic: only the listed callers reach the business port, and only the
+# monitoring namespace reaches the management port. Egress stays open (databases are external).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "skybook.labels" (list $root $name) | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "skybook.selectorLabels" (list $root $name) | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    {{- if $svc.allowFrom }}
+    - ports:
+        - port: http
+      from:
+        {{- range $caller := $svc.allowFrom }}
+        {{- if eq $caller "ingress" }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $root.Values.networkPolicy.ingressNamespace }}
+        {{- else }}
+        - podSelector:
+            matchLabels:
+              {{- include "skybook.selectorLabels" (list $root $caller) | nindent 14 }}
+        {{- end }}
+        {{- end }}
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: smoke-test
+    {{- end }}
+    {{- if $svc.java }}
+    - ports:
+        - port: management
+      from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $root.Values.networkPolicy.monitoringNamespace }}
+        # Helm test pod (smoke test) in the release namespace.
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: smoke-test
+    {{- end }}
+{{- end }}
+{{- end }}

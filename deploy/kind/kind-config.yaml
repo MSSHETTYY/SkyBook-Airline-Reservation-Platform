@@ -1,0 +1,17 @@
+# Single-node kind cluster for SkyBook. Ports 80/443 on the host go to the ingress controller, so the
+# portal is at http://localhost/ (a redirect URI registered for the skybook-web Keycloak client).
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: skybook
+nodes:
+  - role: control-plane
+    image: kindest/node:v1.34.0
+    labels:
+      ingress-ready: "true"
+    extraPortMappings:
+      - containerPort: 80
+        hostPort: 80
+        protocol: TCP
+      - containerPort: 443
+        hostPort: 443
+        protocol: TCP

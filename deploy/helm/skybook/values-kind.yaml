@@ -1,0 +1,82 @@
+# Local kind cluster (deploy/kind/up.sh). The applications run in kind; the infrastructure keeps running
+# in Docker Compose on the host and is reached through host.docker.internal (Docker Desktop).
+# Sized for an 8 GB laptop: one replica each, no autoscaling, small heaps.
+
+global:
+  imageRegistry: ghcr.io/msshettyy
+  imageTag: dev
+  imagePullPolicy: Never # images are side-loaded with `kind load docker-image`
+  keycloak:
+    # Browser and tokens use localhost:8180; pods fetch keys and service tokens via the Docker host.
+    issuerUri: http://localhost:8180/realms/skybook
+    jwkSetUri: http://host.docker.internal:8180/realms/skybook/protocol/openid-connect/certs
+    tokenUri: http://host.docker.internal:8180/realms/skybook/protocol/openid-connect/token
+
+mtls:
+  enabled: true
+
+ingress:
+  host: localhost
+  tls:
+    enabled: false
+
+networkPolicy:
+  # Enforced by kindnet in recent kind releases, so local runs exercise the same rules as production.
+  enabled: true
+
+secrets:
+  create: true
+  values:
+    redis-password: redis_dev
+    inventory-db-password: inventory_dev
+    booking-db-password: booking_dev
+    payment-db-password: payment_dev
+    booking-client-secret: booking-service-dev-secret
+    crypto-key: ZGV2LW9ubHkta2V5LWZvci1sb2NhbC1za3lib29rISE=
+    mongodb-uri: mongodb://root:mongo_root_dev@host.docker.internal:27017/notifications?authSource=admin
+    solace-password: skybook_dev
+    stripe-secret-key: ""
+    stripe-webhook-secret: ""
+
+serviceDefaults:
+  replicas: 1
+  autoscaling:
+    enabled: false
+  resources:
+    requests: { cpu: 50m, memory: 320Mi }
+    limits: { memory: 448Mi }
+
+services:
+  api-gateway:
+    env:
+      REDIS_HOST: host.docker.internal
+      ALLOWED_ORIGINS: http://localhost
+  inventory-service:
+    env:
+      INVENTORY_DB_URL: jdbc:oracle:thin:@host.docker.internal:1521/FREEPDB1
+      REDIS_HOST: host.docker.internal
+  booking-service:
+    env:
+      BOOKING_DB_URL: jdbc:mariadb://host.docker.internal:3306/booking
+      KAFKA_BOOTSTRAP_SERVERS: host.docker.internal:9094
+      GDS_BASE_URL: http://host.docker.internal:8095
+      CRM_BASE_URL: http://host.docker.internal:8095
+      LOYALTY_BASE_URL: http://host.docker.internal:8095
+  payment-service:
+    env:
+      PAYMENT_DB_URL: jdbc:mariadb://host.docker.internal:3306/payment
+      KAFKA_BOOTSTRAP_SERVERS: host.docker.internal:9094
+      PAYMENT_PROVIDER: fake
+  notification-service:
+    env:
+      SOLACE_HOST: tcp://host.docker.internal:55555
+      SMTP_HOST: host.docker.internal
+      SMTP_PORT: "1025"
+  event-bridge:
+    env:
+      KAFKA_BOOTSTRAP_SERVERS: host.docker.internal:9094
+      SOLACE_HOST: tcp://host.docker.internal:55555
+  web-ui:
+    replicas: 1
+    autoscaling:
+      enabled: false

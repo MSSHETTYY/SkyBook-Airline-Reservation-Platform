@@ -1,0 +1,39 @@
+{{- $gateway := include "skybook.svc" (list . "api-gateway") | fromYaml -}}
+{{- $web := include "skybook.svc" (list . "web-ui") | fromYaml -}}
+{{- $inventory := ne (toString (dig "inventory-service" "enabled" true .Values.services)) "false" -}}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ .Release.Name }}-smoke-test
+  labels:
+    {{- include "skybook.labels" (list . "smoke-test") | nindent 4 }}
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65534
+    seccompProfile: { type: RuntimeDefault }
+  containers:
+    - name: smoke
+      image: curlimages/curl:8.17.0
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities: { drop: [ALL] }
+      resources:
+        requests: { cpu: 10m, memory: 16Mi }
+        limits: { memory: 32Mi }
+      command: ["sh", "-c"]
+      # Unauthenticated endpoints only: gateway readiness, a public flight search, the SPA health check.
+      args:
+        - >-
+          set -e;
+          curl -fsS --retry 5 --retry-delay 3 http://api-gateway:{{ $gateway.managementPort }}/actuator/health/readiness;
+          {{- if $inventory }}
+          curl -fsS "http://api-gateway:{{ $gateway.port }}/api/v1/flights?origin=DXB&destination=LHR&date=$(date -u +%F)";
+          {{- end }}
+          curl -fsS http://web-ui:{{ $web.port }}/healthz

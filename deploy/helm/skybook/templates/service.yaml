@@ -1,0 +1,24 @@
+{{- $root := . -}}
+{{- range $name := include "skybook.enabledServices" . | fromJsonArray }}
+{{- $svc := include "skybook.svc" (list $root $name) | fromYaml }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "skybook.labels" (list $root $name) | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "skybook.selectorLabels" (list $root $name) | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ $svc.port }}
+      targetPort: http
+    {{- if $svc.java }}
+    - name: management
+      port: {{ $svc.managementPort }}
+      targetPort: management
+    {{- end }}
+{{- end }}

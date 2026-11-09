@@ -22,6 +22,23 @@ x-defaults: &defaults
       max-size: "10m"
       max-file: "2"
 
+# Shared by the application containers (profile "apps").
+x-app: &app
+  <<: *defaults
+  profiles: [apps]
+  mem_limit: 512m
+  read_only: true
+  tmpfs: [/tmp]
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: [ALL]
+
+x-app-env: &app-env
+  SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-default}
+  # Issuer stays the browser-facing URL (see keycloak), keys are fetched over the container network.
+  KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/skybook
+  SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/skybook/protocol/openid-connect/certs
+  JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=70 -XX:+ExitOnOutOfMemoryError -XX:+UseSerialGC -Xss512k
+
 services:
 
   # ---------------------------------------------------------------- core ----
@@ -111,10 +128,11 @@ services:
       KAFKA_PROCESS_ROLES: broker,controller
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      # INTERNAL for containers, EXTERNAL for services started from the IDE on the host.
-      KAFKA_LISTENERS: INTERNAL://:29092,EXTERNAL://:9092,CONTROLLER://:9093
-      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      # INTERNAL for containers on this network, EXTERNAL for services started from the IDE on the host,
+      # DOCKERHOST for other Docker networks such as the kind cluster (deploy/kind).
+      KAFKA_LISTENERS: INTERNAL://:29092,EXTERNAL://:9092,DOCKERHOST://:9094,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092,DOCKERHOST://host.docker.internal:9094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,DOCKERHOST:PLAINTEXT,CONTROLLER:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
       # Topics (incl. DLTs) are declared explicitly by the owning service - typos must fail, not create topics.
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
@@ -124,7 +142,7 @@ services:
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       KAFKA_NUM_PARTITIONS: 3
       KAFKA_HEAP_OPTS: -Xms256m -Xmx512m
-    ports: ["9092:9092"]
+    ports: ["9092:9092", "9094:9094"]
     # No volume on purpose: dev topics are recreated by the services; avoids root-owned volume
     # permission issues with the non-root apache/kafka image.
     healthcheck:
@@ -173,6 +191,10 @@ services:
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-keycloak_admin_dev}
       KC_HEALTH_ENABLED: "true"
       KC_HTTP_PORT: "8080"
+      # Tokens always carry iss=http://localhost:8180/realms/skybook, also when containers fetch them via
+      # http://keycloak:8080 (back channel), so browser and service tokens validate the same way.
+      KC_HOSTNAME: http://localhost:8180
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
       JAVA_OPTS_KC_HEAP: -XX:MaxRAMPercentage=65
     ports: ["8180:8080"]
     volumes:
@@ -276,6 +298,97 @@ services:
       interval: 10s
       timeout: 3s
       retries: 10
+
+  # ---------------------------------------------------------------------------------- applications
+  # Profile "apps": the services as containers (needs the infrastructure profiles running). On an 8 GB
+  # machine start only what you need, e.g. `docker compose --profile apps up -d inventory-service`.
+  inventory-service:
+    <<: *app
+    build: { context: ., dockerfile: services/Dockerfile, args: { SERVICE: inventory-service } }
+    image: ghcr.io/msshettyy/skybook-inventory-service:${SKYBOOK_TAG:-dev}
+    environment:
+      <<: *app-env
+      INVENTORY_DB_URL: jdbc:oracle:thin:@oracle:1521/FREEPDB1
+      REDIS_HOST: redis
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_dev}
+    ports: ["8081:8081"]
+
+  booking-service:
+    <<: *app
+    build: { context: ., dockerfile: services/Dockerfile, args: { SERVICE: booking-service } }
+    image: ghcr.io/msshettyy/skybook-booking-service:${SKYBOOK_TAG:-dev}
+    environment:
+      <<: *app-env
+      BOOKING_DB_URL: jdbc:mariadb://mariadb:3306/booking
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      INVENTORY_BASE_URL: http://inventory-service:8081
+      PAYMENT_BASE_URL: http://payment-service:8083
+      GDS_BASE_URL: http://wiremock:8080
+      CRM_BASE_URL: http://wiremock:8080
+      LOYALTY_BASE_URL: http://wiremock:8080
+      SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/skybook/protocol/openid-connect/token
+    ports: ["8082:8082"]
+
+  payment-service:
+    <<: *app
+    build: { context: ., dockerfile: services/Dockerfile, args: { SERVICE: payment-service } }
+    image: ghcr.io/msshettyy/skybook-payment-service:${SKYBOOK_TAG:-dev}
+    environment:
+      <<: *app-env
+      PAYMENT_DB_URL: jdbc:mariadb://mariadb:3306/payment
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      PAYMENT_PROVIDER: ${PAYMENT_PROVIDER:-fake}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+    ports: ["8083:8083"]
+
+  notification-service:
+    <<: *app
+    build: { context: ., dockerfile: services/Dockerfile, args: { SERVICE: notification-service } }
+    image: ghcr.io/msshettyy/skybook-notification-service:${SKYBOOK_TAG:-dev}
+    environment:
+      <<: *app-env
+      MONGODB_URI: mongodb://root:${MONGO_ROOT_PASSWORD:-mongo_root_dev}@mongodb:27017/notifications?authSource=admin
+      SOLACE_HOST: tcp://solace:55555
+      SMTP_HOST: mailpit
+    ports: ["8084:8084"]
+
+  event-bridge:
+    <<: *app
+    build: { context: ., dockerfile: services/Dockerfile, args: { SERVICE: event-bridge } }
+    image: ghcr.io/msshettyy/skybook-event-bridge:${SKYBOOK_TAG:-dev}
+    environment:
+      <<: *app-env
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SOLACE_HOST: tcp://solace:55555
+    ports: ["8085:8085"]
+
+  api-gateway:
+    <<: *app
+    build: { context: ., dockerfile: services/Dockerfile, args: { SERVICE: api-gateway } }
+    image: ghcr.io/msshettyy/skybook-api-gateway:${SKYBOOK_TAG:-dev}
+    environment:
+      <<: *app-env
+      INVENTORY_URI: http://inventory-service:8081
+      BOOKING_URI: http://booking-service:8082
+      PAYMENT_URI: http://payment-service:8083
+      REDIS_HOST: redis
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_dev}
+      ALLOWED_ORIGINS: http://localhost:5173,http://localhost:8088
+    ports: ["8080:8080"]
+
+  web-ui:
+    <<: *defaults
+    profiles: [apps]
+    build: { context: ., dockerfile: web-ui/Dockerfile }
+    image: ghcr.io/msshettyy/skybook-web-ui:${SKYBOOK_TAG:-dev}
+    mem_limit: 64m
+    read_only: true
+    tmpfs: [/tmp, /var/cache/nginx]
+    environment:
+      SKYBOOK_GATEWAY_URL: http://api-gateway:8080
+      SKYBOOK_STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
+    ports: ["8088:8080"]
 
 networks:
   skybook:

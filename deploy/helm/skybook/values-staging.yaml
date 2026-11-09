@@ -1,0 +1,57 @@
+# Staging: production-like security (mTLS between services, secrets from Vault, TLS at the ingress),
+# smaller scale. Infrastructure endpoints are the managed services of the staging account.
+global:
+  keycloak:
+    issuerUri: https://login.staging.skybook.example/realms/skybook
+    jwkSetUri: https://login.staging.skybook.example/realms/skybook/protocol/openid-connect/certs
+    tokenUri: https://login.staging.skybook.example/realms/skybook/protocol/openid-connect/token
+
+mtls:
+  enabled: true
+
+vault:
+  enabled: true
+  address: https://vault.staging.skybook.example
+
+ingress:
+  host: staging.skybook.example
+  tls:
+    enabled: true
+    secretName: skybook-staging-tls
+    clusterIssuer: letsencrypt-staging
+
+serviceDefaults:
+  autoscaling:
+    minReplicas: 2
+    maxReplicas: 3
+
+services:
+  inventory-service:
+    env:
+      INVENTORY_DB_URL: jdbc:oracle:thin:@inventory-db.staging.skybook.internal:1521/SKYBOOK
+      REDIS_HOST: redis.staging.skybook.internal
+  api-gateway:
+    env:
+      REDIS_HOST: redis.staging.skybook.internal
+  booking-service:
+    env:
+      BOOKING_DB_URL: jdbc:mariadb://booking-db.staging.skybook.internal:3306/booking
+      KAFKA_BOOTSTRAP_SERVERS: kafka.staging.skybook.internal:9092
+      GDS_BASE_URL: https://gds-sandbox.partner.example
+      CRM_BASE_URL: https://crm-sandbox.partner.example
+      LOYALTY_BASE_URL: https://loyalty-sandbox.partner.example
+  payment-service:
+    env:
+      PAYMENT_DB_URL: jdbc:mariadb://payment-db.staging.skybook.internal:3306/payment
+      KAFKA_BOOTSTRAP_SERVERS: kafka.staging.skybook.internal:9092
+      # Stripe test mode keys come from Vault (secret/payment-service).
+      PAYMENT_PROVIDER: stripe
+  notification-service:
+    env:
+      SOLACE_HOST: tcps://solace.staging.skybook.internal:55443
+      SMTP_HOST: smtp.staging.skybook.internal
+      SMTP_PORT: "587"
+  event-bridge:
+    env:
+      KAFKA_BOOTSTRAP_SERVERS: kafka.staging.skybook.internal:9092
+      SOLACE_HOST: tcps://solace.staging.skybook.internal:55443

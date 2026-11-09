@@ -1,0 +1,200 @@
+# SkyBook Helm values. Infrastructure (databases, Kafka, Solace, Keycloak, Vault) is external to this
+# chart: managed services in the cloud, or the Docker Compose stack for kind (values-kind.yaml).
+
+global:
+  imageRegistry: ghcr.io/msshettyy
+  # Defaults to the chart's appVersion; CI sets it to the commit SHA.
+  imageTag: ""
+  imagePullPolicy: IfNotPresent
+  imagePullSecrets: []
+  # Extra Spring profiles for every Java service ("mtls" and "vault" are added automatically).
+  springProfiles: []
+  keycloak:
+    # The issuer exactly as it appears in tokens (the browser-facing URL).
+    issuerUri: https://login.skybook.example/realms/skybook
+    # Where pods fetch signing keys and request service tokens (may be an internal address).
+    jwkSetUri: https://login.skybook.example/realms/skybook/protocol/openid-connect/certs
+    tokenUri: https://login.skybook.example/realms/skybook/protocol/openid-connect/token
+
+# Mutual TLS between services (ADR-0010): certificates issued and rotated by cert-manager.
+mtls:
+  enabled: false
+  # Creates a namespace-local CA (self-signed root -> CA issuer). Set false to use an existing issuer.
+  createIssuers: true
+  issuerRef:
+    name: skybook-ca-issuer
+    kind: Issuer
+  duration: 720h
+  renewBefore: 240h
+
+# Secrets from Vault via Kubernetes auth (ADR-0011): each pod logs in with its service-account token,
+# role name = service name (see deploy/vault/configure-kubernetes-auth.sh).
+vault:
+  enabled: false
+  address: http://vault.vault.svc:8200
+
+# Kubernetes Secret with database passwords etc. "create: true" is for local clusters only; in real
+# environments use Vault or an externally managed Secret (existingSecret).
+secrets:
+  create: false
+  existingSecret: skybook-secrets
+  # Used only when create is true.
+  values: {}
+
+ingress:
+  enabled: true
+  className: nginx
+  host: skybook.example
+  tls:
+    enabled: true
+    secretName: skybook-web-tls
+    # cert-manager ClusterIssuer for the public certificate (e.g. letsencrypt-prod).
+    clusterIssuer: ""
+  annotations: {}
+
+networkPolicy:
+  enabled: true
+  # Namespace of the ingress controller (allowed to reach web-ui and api-gateway).
+  ingressNamespace: ingress-nginx
+  # Namespace allowed to scrape management ports (Prometheus, Phase 7).
+  monitoringNamespace: monitoring
+
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: [ALL]
+
+# Defaults merged into every service below.
+serviceDefaults:
+  replicas: 2
+  runAsUser: 10001
+  java: true
+  # Serves its business port over mTLS when mtls.enabled.
+  mtlsServer: true
+  managementPort: 9090
+  terminationGracePeriodSeconds: 45
+  resources:
+    requests: { cpu: 100m, memory: 384Mi }
+    limits: { memory: 512Mi }
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+  # Pod-to-pod callers allowed by the NetworkPolicy (service names); "ingress" = ingress controller.
+  allowFrom: []
+  env: {}
+  # ENV_VAR: key in the Secret
+  secretEnv: {}
+  nodeSelector: {}
+  tolerations: []
+
+# Values in env are rendered with `tpl`, so they can reference other values.
+services:
+  api-gateway:
+    port: 8080
+    # Browser-facing TLS ends at the ingress; the gateway is an mTLS client of the services only.
+    mtlsServer: false
+    allowFrom: [ingress, web-ui]
+    secretEnv:
+      REDIS_PASSWORD: redis-password
+    env:
+      INVENTORY_URI: '{{ include "skybook.serviceUrl" (list . "inventory-service") }}'
+      BOOKING_URI: '{{ include "skybook.serviceUrl" (list . "booking-service") }}'
+      PAYMENT_URI: '{{ include "skybook.serviceUrl" (list . "payment-service") }}'
+      REDIS_HOST: redis.skybook-data.svc
+      ALLOWED_ORIGINS: 'https://{{ .Values.ingress.host }}'
+
+  inventory-service:
+    port: 8081
+    allowFrom: [api-gateway, booking-service]
+    secretEnv:
+      INVENTORY_DB_PASSWORD: inventory-db-password
+      REDIS_PASSWORD: redis-password
+    env:
+      INVENTORY_DB_URL: jdbc:oracle:thin:@oracle.skybook-data.svc:1521/FREEPDB1
+      REDIS_HOST: redis.skybook-data.svc
+
+  booking-service:
+    port: 8082
+    allowFrom: [api-gateway]
+    secretEnv:
+      BOOKING_DB_PASSWORD: booking-db-password
+      BOOKING_CLIENT_SECRET: booking-client-secret
+      CRYPTO_KEY_DEV1: crypto-key
+    env:
+      BOOKING_DB_URL: jdbc:mariadb://mariadb.skybook-data.svc:3306/booking
+      KAFKA_BOOTSTRAP_SERVERS: kafka.skybook-data.svc:9092
+      INVENTORY_BASE_URL: '{{ include "skybook.serviceUrl" (list . "inventory-service") }}'
+      PAYMENT_BASE_URL: '{{ include "skybook.serviceUrl" (list . "payment-service") }}'
+      GDS_BASE_URL: https://gds.partner.example
+      CRM_BASE_URL: https://crm.partner.example
+      LOYALTY_BASE_URL: https://loyalty.partner.example
+      SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_KEYCLOAK_TOKEN_URI: '{{ .Values.global.keycloak.tokenUri }}'
+
+  payment-service:
+    port: 8083
+    # Stripe webhooks arrive through the gateway route /api/v1/payments/**.
+    allowFrom: [api-gateway, booking-service]
+    secretEnv:
+      PAYMENT_DB_PASSWORD: payment-db-password
+      STRIPE_SECRET_KEY: stripe-secret-key
+      STRIPE_WEBHOOK_SECRET: stripe-webhook-secret
+      CRYPTO_KEY_DEV1: crypto-key
+    env:
+      PAYMENT_DB_URL: jdbc:mariadb://mariadb.skybook-data.svc:3306/payment
+      KAFKA_BOOTSTRAP_SERVERS: kafka.skybook-data.svc:9092
+      PAYMENT_PROVIDER: stripe
+
+  notification-service:
+    port: 8084
+    replicas: 1
+    # One active consumer on the exclusive queue; a standby replica takes over (ADR-0016).
+    autoscaling: { enabled: false }
+    allowFrom: []
+    secretEnv:
+      MONGODB_URI: mongodb-uri
+      SOLACE_PASSWORD: solace-password
+    env:
+      SOLACE_HOST: tcp://solace.skybook-data.svc:55555
+      SMTP_HOST: smtp.skybook-data.svc
+      SMTP_PORT: "25"
+
+  event-bridge:
+    port: 8085
+    replicas: 1
+    # Kafka partitions bound useful parallelism; scale by partitions, not CPU.
+    autoscaling: { enabled: false }
+    allowFrom: []
+    secretEnv:
+      SOLACE_PASSWORD: solace-password
+    env:
+      KAFKA_BOOTSTRAP_SERVERS: kafka.skybook-data.svc:9092
+      SOLACE_HOST: tcp://solace.skybook-data.svc:55555
+
+  web-ui:
+    java: false
+    mtlsServer: false
+    port: 8080
+    runAsUser: 101
+    allowFrom: [ingress]
+    resources:
+      requests: { cpu: 20m, memory: 32Mi }
+      limits: { memory: 64Mi }
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 4
+      targetCPUUtilizationPercentage: 70
+    env:
+      SKYBOOK_GATEWAY_URL: '{{ include "skybook.serviceUrl" (list . "api-gateway") }}'
+      SKYBOOK_OIDC_AUTHORITY: '{{ .Values.global.keycloak.issuerUri }}'
+      SKYBOOK_OIDC_ORIGIN: '{{ regexFind "^https?://[^/]+" .Values.global.keycloak.issuerUri }}'
+      SKYBOOK_OIDC_CLIENT_ID: skybook-web
+      SKYBOOK_STRIPE_PUBLISHABLE_KEY: ""

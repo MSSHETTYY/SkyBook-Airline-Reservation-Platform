@@ -1,0 +1,20 @@
+{{- $root := . -}}
+{{- range $name := include "skybook.enabledServices" . | fromJsonArray }}
+{{- $svc := include "skybook.svc" (list $root $name) | fromYaml }}
+{{- $min := ternary $svc.autoscaling.minReplicas $svc.replicas $svc.autoscaling.enabled }}
+{{- if gt (int $min) 1 }}
+---
+# Voluntary disruptions (node drains, upgrades) never take the last ready pod.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "skybook.labels" (list $root $name) | nindent 4 }}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      {{- include "skybook.selectorLabels" (list $root $name) | nindent 6 }}
+{{- end }}
+{{- end }}

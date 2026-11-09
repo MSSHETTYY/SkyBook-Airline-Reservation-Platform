@@ -1,0 +1,188 @@
+{{- $root := . -}}
+{{- range $name := include "skybook.enabledServices" . | fromJsonArray }}
+{{- $svc := include "skybook.svc" (list $root $name) | fromYaml }}
+{{- $mtls := and $root.Values.mtls.enabled $svc.java }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "skybook.labels" (list $root $name) | nindent 4 }}
+spec:
+  {{- if not $svc.autoscaling.enabled }}
+  replicas: {{ $svc.replicas }}
+  {{- end }}
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "skybook.selectorLabels" (list $root $name) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "skybook.labels" (list $root $name) | nindent 8 }}
+      annotations:
+        # Roll the pods when the shared secret or this service's env changes.
+        checksum/env: {{ toJson $svc.env | sha256sum | trunc 16 }}
+        {{- if $svc.java }}
+        prometheus.io/scrape: "true"
+        prometheus.io/port: {{ $svc.managementPort | quote }}
+        prometheus.io/path: /actuator/prometheus
+        {{- end }}
+    spec:
+      serviceAccountName: {{ $name }}
+      # Only pods that log in to Vault need their service-account token.
+      automountServiceAccountToken: {{ and $root.Values.vault.enabled $svc.java }}
+      terminationGracePeriodSeconds: {{ $svc.terminationGracePeriodSeconds }}
+      {{- with $root.Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml $root.Values.podSecurityContext | nindent 8 }}
+        runAsUser: {{ $svc.runAsUser }}
+        runAsGroup: {{ $svc.runAsUser }}
+        fsGroup: {{ $svc.runAsUser }}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    {{- include "skybook.selectorLabels" (list $root $name) | nindent 20 }}
+      {{- with $svc.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $svc.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ $name }}
+          image: {{ include "skybook.image" (list $root $name) }}
+          imagePullPolicy: {{ $root.Values.global.imagePullPolicy }}
+          securityContext:
+            {{- toYaml $root.Values.containerSecurityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ $svc.port }}
+            {{- if $svc.java }}
+            - name: management
+              containerPort: {{ $svc.managementPort }}
+            {{- end }}
+          env:
+            {{- if $svc.java }}
+            - name: SPRING_PROFILES_ACTIVE
+              value: {{ include "skybook.springProfiles" $root | quote }}
+            # Actuator on its own plain-HTTP port: probes and Prometheus need no client certificate.
+            - name: MANAGEMENT_SERVER_PORT
+              value: {{ $svc.managementPort | quote }}
+            - name: MANAGEMENT_PORT
+              value: {{ $svc.managementPort | quote }}
+            - name: KEYCLOAK_ISSUER_URI
+              value: {{ $root.Values.global.keycloak.issuerUri | quote }}
+            - name: SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI
+              value: {{ $root.Values.global.keycloak.jwkSetUri | quote }}
+            {{- if $root.Values.vault.enabled }}
+            - name: VAULT_ADDR
+              value: {{ $root.Values.vault.address | quote }}
+            - name: VAULT_AUTHENTICATION
+              value: KUBERNETES
+            {{- end }}
+            {{- end }}
+            {{- range $key, $value := $svc.env }}
+            - name: {{ $key }}
+              value: {{ tpl (toString $value) $root | quote }}
+            {{- end }}
+            {{- range $key, $secretKey := $svc.secretEnv }}
+            - name: {{ $key }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $root.Values.secrets.existingSecret }}
+                  key: {{ $secretKey }}
+                  # Absent keys are tolerated: Vault (or the service default) may supply the value.
+                  optional: true
+            {{- end }}
+          {{- if $svc.java }}
+          startupProbe:
+            httpGet: { path: /actuator/health/liveness, port: management }
+            periodSeconds: 5
+            failureThreshold: 36
+          livenessProbe:
+            httpGet: { path: /actuator/health/liveness, port: management }
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: /actuator/health/readiness, port: management }
+            periodSeconds: 5
+            failureThreshold: 3
+          {{- else }}
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 5
+          {{- end }}
+          lifecycle:
+            preStop:
+              # Give endpoints/ingress time to stop routing here before the graceful shutdown starts.
+              sleep: { seconds: 5 }
+          resources:
+            {{- toYaml $svc.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            {{- if not $svc.java }}
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+            - name: nginx-conf
+              mountPath: /etc/nginx/conf.d
+            - name: html
+              mountPath: /usr/share/nginx/html
+            {{- end }}
+            {{- if $mtls }}
+            - name: tls
+              mountPath: /etc/skybook/tls
+              readOnly: true
+            {{- end }}
+      {{- if not $svc.java }}
+      initContainers:
+        # Read-only root fs: copy the static files to a writable volume so config.js can be generated.
+        - name: copy-static
+          image: {{ include "skybook.image" (list $root $name) }}
+          imagePullPolicy: {{ $root.Values.global.imagePullPolicy }}
+          command: ["sh", "-c", "cp -r /usr/share/nginx/html/. /work/"]
+          securityContext:
+            {{- toYaml $root.Values.containerSecurityContext | nindent 12 }}
+          resources:
+            {{- toYaml $svc.resources | nindent 12 }}
+          volumeMounts:
+            - name: html
+              mountPath: /work
+      {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 256Mi }
+        {{- if not $svc.java }}
+        - name: nginx-cache
+          emptyDir: {}
+        - name: nginx-conf
+          emptyDir: {}
+        - name: html
+          emptyDir: {}
+        {{- end }}
+        {{- if $mtls }}
+        - name: tls
+          secret:
+            secretName: {{ $name }}-tls
+        {{- end }}
+{{- end }}

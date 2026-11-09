@@ -1,0 +1,65 @@
+# Black-box API tests (Newman) against the whole platform running in Docker Compose: real Oracle,
+# MariaDB, Kafka, Solace, Keycloak, WireMock partners and all services built from this commit.
+# Too heavy for every pull request, so it runs nightly, on demand, and on release tags.
+name: api-tests
+
+on:
+  schedule:
+    - cron: "30 2 * * *"
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  newman:
+    name: Newman - booking saga end to end
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      PROFILES: --profile core --profile messaging --profile auth --profile notification --profile partners --profile apps
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start infrastructure
+        run: |
+          docker compose --profile core --profile messaging --profile auth --profile notification --profile partners \
+            up -d --wait --wait-timeout 600
+
+      - name: Provision Solace queues
+        run: ./infra/solace/provision.sh
+
+      - name: Build and start the services
+        run: docker compose $PROFILES up -d --build
+
+      - name: Wait for the gateway and the services
+        run: |
+          for port in 8081 8082 8083 8084 8085 8080; do
+            echo "waiting for :$port"
+            timeout 600 bash -c "until curl -fsS http://localhost:$port/actuator/health/readiness >/dev/null; do sleep 5; done"
+          done
+
+      - name: Newman
+        run: |
+          npx --yes newman@6 run tests/api/skybook.postman_collection.json \
+            -e tests/api/local.postman_environment.json \
+            --reporters cli,junit --reporter-junit-export newman-results.xml \
+            --timeout-request 15000
+
+      - name: Service logs
+        if: failure()
+        run: docker compose $PROFILES logs --no-color --tail=300
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: newman-results
+          path: newman-results.xml
+          if-no-files-found: ignore
+
+      - name: Stop
+        if: always()
+        run: docker compose $PROFILES down -v

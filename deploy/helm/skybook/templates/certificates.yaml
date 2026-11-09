@@ -1,0 +1,67 @@
+{{- if .Values.mtls.enabled }}
+{{- $root := . -}}
+{{- if .Values.mtls.createIssuers }}
+---
+# Bootstrap: a self-signed issuer signs the SkyBook CA, which then issues every service certificate.
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: skybook-selfsigned
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: skybook-ca
+spec:
+  isCA: true
+  commonName: SkyBook internal CA
+  secretName: skybook-ca
+  duration: 87600h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: skybook-selfsigned
+    kind: Issuer
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ .Values.mtls.issuerRef.name }}
+spec:
+  ca:
+    secretName: skybook-ca
+{{- end }}
+{{- range $name := include "skybook.enabledServices" . | fromJsonArray }}
+{{- $svc := include "skybook.svc" (list $root $name) | fromYaml }}
+{{- if $svc.java }}
+---
+# Server and client certificate in one: the same identity serves mTLS and calls other services.
+# Renewed by cert-manager; Spring reloads the PEM bundle without a restart (reload-on-update).
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "skybook.labels" (list $root $name) | nindent 4 }}
+spec:
+  secretName: {{ $name }}-tls
+  commonName: {{ $name }}
+  dnsNames:
+    - {{ $name }}
+    - {{ $name }}.{{ $root.Release.Namespace }}.svc
+    - {{ $name }}.{{ $root.Release.Namespace }}.svc.cluster.local
+  duration: {{ $root.Values.mtls.duration }}
+  renewBefore: {{ $root.Values.mtls.renewBefore }}
+  usages: [server auth, client auth, digital signature, key encipherment]
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  issuerRef:
+    {{- toYaml $root.Values.mtls.issuerRef | nindent 4 }}
+{{- end }}
+{{- end }}
+{{- end }}

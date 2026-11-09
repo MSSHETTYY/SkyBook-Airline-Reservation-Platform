@@ -1,0 +1,8 @@
+# Trivy configuration shared by the CI scans (.github/workflows/ci.yml).
+scan:
+  skip-dirs:
+    - web-ui/node_modules
+    # Throw-away certificates generated for the mTLS tests (MutualTlsTest); never used outside tests.
+    - libs/common/src/test/resources/test-certs
+vulnerability:
+  ignore-unfixed: true

@@ -1,0 +1,34 @@
+# Weekly dependency updates, grouped so they arrive as a few reviewable pull requests.
+version: 2
+updates:
+  - package-ecosystem: maven
+    directory: /
+    schedule: { interval: weekly }
+    groups:
+      spring:
+        patterns: ["org.springframework*"]
+      test:
+        patterns: ["org.junit*", "org.testcontainers*", "org.assertj*", "org.mockito*", "au.com.dius*"]
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: npm
+    directory: /web-ui
+    schedule: { interval: weekly }
+    groups:
+      react:
+        patterns: ["react", "react-dom", "@types/react*", "react-router"]
+      mui:
+        patterns: ["@mui/*", "@emotion/*"]
+      testing:
+        patterns: ["vitest", "@vitest/*", "@testing-library/*", "@playwright/test", "@axe-core/*", "msw", "jsdom"]
+      lint:
+        patterns: ["eslint*", "@eslint/*", "typescript-eslint", "globals"]
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: docker
+    directories: [/services, /web-ui]
+    schedule: { interval: weekly }
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }

@@ -162,6 +162,31 @@ Demo users with Keycloak: `customer@skybook.test`, `agent@skybook.test`, `admin@
 (passwords in [infra/keycloak/skybook-realm.json](infra/keycloak/skybook-realm.json)). In mock mode, seat
 3A always fails on the first attempt so you can see how a seat conflict is handled.
 
+### Containers and Kubernetes
+
+Every service has an image (`services/Dockerfile`, `web-ui/Dockerfile`; non-root, read-only root filesystem).
+See ADR-0018 for the full delivery design.
+
+```bash
+# All services as containers next to the infrastructure (profile "apps"; ~4 GB on top of the infrastructure):
+docker compose --profile core --profile messaging --profile auth --profile notification --profile partners up -d
+./infra/solace/provision.sh
+docker compose --profile apps up -d --build       # portal on http://localhost:8088, gateway on :8080
+
+# Local Kubernetes: kind + ingress-nginx + cert-manager, images side-loaded, Helm chart with mTLS:
+./deploy/kind/up.sh                               # portal on http://localhost/
+SKYBOOK_SERVICES="inventory-service api-gateway web-ui" ./deploy/kind/up.sh   # lighter, for 8 GB machines
+
+# API end-to-end tests against a running stack (also nightly in GitHub Actions):
+npx newman run tests/api/skybook.postman_collection.json -e tests/api/local.postman_environment.json
+```
+
+Pipelines:
+- [ci.yml](.github/workflows/ci.yml): build, tests, SonarQube, Trivy, Helm/kubeconform, images to
+  GHCR, and a kind deployment.
+- [api-tests.yml](.github/workflows/api-tests.yml): Newman against the full stack.
+- [deploy.yml](.github/workflows/deploy.yml): manual promotion to staging or production.
+
 ### Ports
 
 | Port  | Component                        | Port  | Component                  |
@@ -186,7 +211,7 @@ The application services will use ports 8081-8085.
 | 3     | payment-service (Stripe), saga with compensations, outbox, DLTs, Resilience4j, Pact        | Done    |
 | 4     | notification-service (Solace JMS, Mailpit, MongoDB audit trail), Kafka-to-Solace bridge    | Done    |
 | 5     | web-ui (React + TS, accessible), Vitest/RTL, Playwright + axe                              | Done    |
-| 6     | Dockerfiles, Helm on kind, full CI/CD (SonarQube, Trivy, Newman, GHCR, deploy)             | Planned |
+| 6     | Dockerfiles, Helm on kind, full CI/CD (SonarQube, Trivy, Newman, GHCR, deploy)             | Done    |
 | 7     | OpenTelemetry, Prometheus/Grafana SLOs, Loki, k6 load test, chaos tests, final docs        | Planned |
 | 8     | Optional: Spring AI booking assistant (Ollama), Expo mobile app                            | Planned |
 

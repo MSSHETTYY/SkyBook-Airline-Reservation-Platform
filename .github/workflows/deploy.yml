@@ -1,0 +1,57 @@
+# Continuous delivery: promotes an image tag (built and scanned by ci.yml) to a Kubernetes environment.
+# Manual on purpose: the GitHub environment can require reviewers before production.
+#
+# One-time setup per environment (Settings -> Environments -> <name>):
+#   secret   KUBECONFIG_B64   base64 of a kubeconfig for a deploy-only service account
+#   file     deploy/helm/skybook/values-<environment>.yaml   (hosts, external endpoints, Vault, mTLS)
+name: deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment (needs deploy/helm/skybook/values-<environment>.yaml)
+        type: choice
+        options: [staging, production]
+        required: true
+      image-tag:
+        description: Image tag to deploy (default sha-<commit of this run>)
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Helm upgrade (${{ inputs.environment }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.19.0
+
+      - name: Configure cluster access
+        env:
+          KUBECONFIG_B64: ${{ secrets.KUBECONFIG_B64 }}
+        run: |
+          test -n "$KUBECONFIG_B64" || { echo "KUBECONFIG_B64 is not set for this environment"; exit 1; }
+          mkdir -p ~/.kube && echo "$KUBECONFIG_B64" | base64 -d > ~/.kube/config && chmod 600 ~/.kube/config
+
+      - name: Deploy
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+          TAG: ${{ inputs.image-tag || format('sha-{0}', github.sha) }}
+        run: |
+          values="deploy/helm/skybook/values-$ENVIRONMENT.yaml"
+          test -f "$values" || { echo "missing $values"; exit 1; }
+          # --atomic rolls back automatically if the new pods do not become ready.
+          helm upgrade --install skybook deploy/helm/skybook --namespace skybook --create-namespace \
+            -f "$values" --set global.imageTag="$TAG" --atomic --wait --timeout 10m
+          helm test skybook --namespace skybook --logs

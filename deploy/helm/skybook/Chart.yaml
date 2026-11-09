@@ -1,0 +1,11 @@
+apiVersion: v2
+name: skybook
+description: SkyBook airline reservation platform - all application services and the web UI
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.29.0-0"
+keywords: [airline, booking, spring-boot, react]
+home: https://github.com/MSSHETTYY/SkyBook-Airline-Reservation-Platform
+sources:
+  - https://github.com/MSSHETTYY/SkyBook-Airline-Reservation-Platform

@@ -1,5 +1,9 @@
-# Pipeline skeleton (Phase 0). Stages are added as the platform grows; see ADR-0004:
-#   build+unit -> integration (Testcontainers) -> SonarQube -> Trivy/OWASP -> image push (GHCR) -> Helm deploy
+# SkyBook CI (ADR-0004, ADR-0018). On every pull request and push to main:
+#   build + unit/integration tests + Checkstyle + ArchUnit + coverage gates (Java and web UI)
+#   -> SonarQube analysis (when SONAR_TOKEN is configured) -> Trivy filesystem/IaC scan
+#   -> Helm lint + schema validation -> container images (pushed to GHCR on main only, then scanned)
+#   -> deployment of gateway + web UI to an ephemeral kind cluster with cert-manager (main only)
+# API end-to-end tests with Newman against the full stack run in api-tests.yml (nightly / on demand).
 name: ci
 
 on:
@@ -14,13 +18,18 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+env:
+  REGISTRY: ghcr.io/msshettyy
+
 jobs:
   build:
-    name: Build, unit tests, Checkstyle, coverage gate
+    name: Java - build, tests, Checkstyle, ArchUnit, coverage gate
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history for SonarQube blame information
 
       - uses: actions/setup-java@v4
         with:
@@ -28,16 +37,29 @@ jobs:
           java-version: "21"
           cache: maven
 
-      # `verify` runs Checkstyle (validate), unit tests (Surefire), integration tests (Failsafe),
-      # ArchUnit rules and the JaCoCo coverage gate.
+      # `verify` runs Checkstyle (validate), unit tests (Surefire), Testcontainers integration tests
+      # (Failsafe; Docker is available on GitHub runners), Pact, ArchUnit and the JaCoCo coverage gate.
       - name: Maven verify
         run: ./mvnw -B -ntp verify
+
+      - name: SonarQube analysis
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL || 'https://sonarcloud.io' }}
+          SONAR_ORGANIZATION: ${{ vars.SONAR_ORGANIZATION }}
+        if: ${{ env.SONAR_TOKEN != '' }}
+        run: >-
+          ./mvnw -B -ntp org.sonarsource.scanner.maven:sonar-maven-plugin:5.1.0.4751:sonar
+          -Dsonar.host.url="$SONAR_HOST_URL"
+          -Dsonar.organization="$SONAR_ORGANIZATION"
+          -Dsonar.projectKey=skybook
+          -Dsonar.qualitygate.wait=true
 
       - name: Upload test and coverage reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: reports
+          name: java-reports
           path: |
             **/target/surefire-reports/
             **/target/failsafe-reports/
@@ -101,6 +123,74 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
+  security-scan:
+    name: Trivy - dependencies, secrets, Dockerfiles, Kubernetes manifests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Trivy filesystem scan (SARIF for the Security tab)
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          scan-type: fs
+          scanners: vuln,secret,misconfig
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+          format: sarif
+          output: trivy-fs.sarif
+          trivy-config: trivy.yaml
+
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-fs.sarif
+          category: trivy-fs
+
+      # Gate: fail the build on fixable critical/high findings (the SARIF step above never fails).
+      - name: Trivy gate
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          scan-type: fs
+          scanners: vuln,secret,misconfig
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+          trivy-config: trivy.yaml
+
+  helm:
+    name: Helm - lint, render, Kubernetes schema validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.19.0
+
+      - name: Install kubeconform
+        run: |
+          curl -sSL https://github.com/yannh/kubeconform/releases/download/v0.7.0/kubeconform-linux-amd64.tar.gz \
+            | tar -xz kubeconform
+          sudo mv kubeconform /usr/local/bin/
+
+      - name: Lint and validate every values profile
+        run: |
+          chart=deploy/helm/skybook
+          helm lint "$chart" --strict
+          helm lint "$chart" --strict -f "$chart/values-kind.yaml"
+          for profile in "" "-f $chart/values-kind.yaml" "--set mtls.enabled=true --set vault.enabled=true"; do
+            # shellcheck disable=SC2086
+            helm template skybook "$chart" --namespace skybook $profile \
+              | kubeconform -strict -summary -kubernetes-version 1.34.0 \
+                  -schema-location default \
+                  -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
+          done
+
   compose-lint:
     name: Validate docker compose
     runs-on: ubuntu-latest
@@ -110,5 +200,126 @@ jobs:
       - name: docker compose config (all profiles)
         run: >-
           docker compose
-          --profile core --profile messaging --profile auth --profile notification --profile partners --profile secrets
+          --profile core --profile messaging --profile auth --profile notification --profile partners
+          --profile secrets --profile apps
           config --quiet
+
+  images:
+    name: Image ${{ matrix.image }}
+    needs: [build, web-ui, security-scan]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [inventory-service, booking-service, payment-service, notification-service, event-bridge,
+                api-gateway, web-ui]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/skybook-${{ matrix.image }}
+          tags: |
+            type=sha,format=long
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      # Pull requests build the image (proving the Dockerfile works) without pushing it.
+      - name: Build${{ github.event_name == 'push' && ' and push' || '' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.image == 'web-ui' && 'web-ui/Dockerfile' || 'services/Dockerfile' }}
+          build-args: ${{ matrix.image != 'web-ui' && format('SERVICE={0}', matrix.image) || '' }}
+          push: ${{ github.event_name == 'push' }}
+          load: ${{ github.event_name != 'push' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: ${{ github.event_name == 'push' }}
+          sbom: ${{ github.event_name == 'push' }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+      - name: Trivy image scan
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          image-ref: ${{ env.REGISTRY }}/skybook-${{ matrix.image }}:sha-${{ github.sha }}
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+          format: sarif
+          output: trivy-image.sarif
+
+      - name: Upload image scan SARIF
+        if: always() && github.event_name == 'push'
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-image.sarif
+          category: trivy-image-${{ matrix.image }}
+
+  kind-deploy:
+    name: Deploy to an ephemeral kind cluster (gateway + web UI, mTLS)
+    needs: [helm, compose-lint]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.19.0
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: skybook
+          config: deploy/kind/kind-config.yaml
+
+      - name: Build and side-load images
+        run: |
+          docker build -f services/Dockerfile --build-arg SERVICE=api-gateway \
+            -t ghcr.io/msshettyy/skybook-api-gateway:dev .
+          docker build -f web-ui/Dockerfile -t ghcr.io/msshettyy/skybook-web-ui:dev .
+          kind load docker-image ghcr.io/msshettyy/skybook-api-gateway:dev --name skybook
+          kind load docker-image ghcr.io/msshettyy/skybook-web-ui:dev --name skybook
+
+      - name: Install cert-manager
+        run: |
+          helm repo add jetstack https://charts.jetstack.io
+          helm install cert-manager jetstack/cert-manager --namespace cert-manager --create-namespace \
+            --version v1.19.1 --set crds.enabled=true --wait
+
+      # Proves on a real API server: the chart installs, cert-manager issues the mTLS certificates, pods
+      # start non-root with a read-only root filesystem and pass their probes, and the smoke test passes.
+      - name: Helm install and test
+        run: |
+          helm upgrade --install skybook deploy/helm/skybook --namespace skybook --create-namespace \
+            -f deploy/helm/skybook/values-kind.yaml \
+            --set services.inventory-service.enabled=false \
+            --set services.booking-service.enabled=false \
+            --set services.payment-service.enabled=false \
+            --set services.notification-service.enabled=false \
+            --set services.event-bridge.enabled=false \
+            --set services.api-gateway.env.RATE_LIMITER_BEAN=localRateLimiter \
+            --wait --timeout 10m
+          helm test skybook --namespace skybook --logs
+
+      - name: Diagnostics
+        if: failure()
+        run: |
+          kubectl -n skybook get all,certificates,networkpolicies
+          kubectl -n skybook describe pods
+          kubectl -n skybook logs -l app.kubernetes.io/part-of=skybook --tail=200 --all-containers

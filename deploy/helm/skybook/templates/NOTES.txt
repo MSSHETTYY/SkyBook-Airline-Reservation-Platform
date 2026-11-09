@@ -1,0 +1,13 @@
+SkyBook {{ include "skybook.tag" . }} is deploying to namespace {{ .Release.Namespace }}.
+
+  kubectl -n {{ .Release.Namespace }} get pods -l app.kubernetes.io/part-of=skybook -w
+
+{{- if .Values.ingress.enabled }}
+
+Open {{ ternary "https" "http" .Values.ingress.tls.enabled }}://{{ .Values.ingress.host }}/ once the pods are ready.
+{{- end }}
+
+Spring profiles: {{ include "skybook.springProfiles" . }}
+mTLS between services: {{ .Values.mtls.enabled }} | Vault: {{ .Values.vault.enabled }}
+
+Smoke test: helm test {{ .Release.Name }} -n {{ .Release.Namespace }}
