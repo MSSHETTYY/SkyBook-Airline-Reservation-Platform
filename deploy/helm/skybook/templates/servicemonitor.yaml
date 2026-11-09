@@ -1,0 +1,28 @@
+{{- if .Values.observability.serviceMonitor.enabled }}
+{{- $root := . -}}
+{{- range $name := include "skybook.enabledServices" . | fromJsonArray }}
+{{- $svc := include "skybook.svc" (list $root $name) | fromYaml }}
+{{- if $svc.java }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "skybook.labels" (list $root $name) | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "skybook.selectorLabels" (list $root $name) | nindent 6 }}
+  endpoints:
+    - port: management
+      path: /actuator/prometheus
+      interval: {{ $root.Values.observability.serviceMonitor.interval }}
+      honorLabels: true
+      relabelings:
+        # Same label as the local Prometheus, so dashboards and SLO rules work unchanged.
+        - targetLabel: application
+          replacement: {{ $name }}
+{{- end }}
+{{- end }}
+{{- end }}

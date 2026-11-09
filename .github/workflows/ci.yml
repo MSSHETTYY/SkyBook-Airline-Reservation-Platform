@@ -183,7 +183,7 @@ jobs:
           chart=deploy/helm/skybook
           helm lint "$chart" --strict
           helm lint "$chart" --strict -f "$chart/values-kind.yaml"
-          for profile in "" "-f $chart/values-kind.yaml" "--set mtls.enabled=true --set vault.enabled=true"; do
+          for profile in "" "-f $chart/values-kind.yaml" "--set mtls.enabled=true --set vault.enabled=true --set observability.serviceMonitor.enabled=true --set observability.prometheusRule.enabled=true"; do
             # shellcheck disable=SC2086
             helm template skybook "$chart" --namespace skybook $profile \
               | kubeconform -strict -summary -kubernetes-version 1.34.0 \
@@ -201,7 +201,7 @@ jobs:
         run: >-
           docker compose
           --profile core --profile messaging --profile auth --profile notification --profile partners
-          --profile secrets --profile apps
+          --profile secrets --profile apps --profile observability
           config --quiet
 
   images:

@@ -23,7 +23,7 @@ public class SecurityConfig {
         return SkyBookHttpSecurity.apiDefaults(http)
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.GET, "/api/v1/flights", "/api/v1/flights/*",
-                                "/api/v1/flights/*/seats").permitAll()
+                                "/api/v1/flights/*/seats", "/api/v2/flights").permitAll()
                         .anyRequest().authenticated())
                 .build();
     }

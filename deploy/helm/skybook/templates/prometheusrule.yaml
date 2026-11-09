@@ -1,0 +1,11 @@
+{{- if .Values.observability.prometheusRule.enabled }}
+# SLO recording rules and burn-rate alerts; the source file is shared with the local Compose Prometheus.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: skybook-slo
+  labels:
+    {{- include "skybook.labels" (list . "skybook") | nindent 4 }}
+spec:
+  {{- .Files.Get "files/skybook-slo-rules.yml" | fromYaml | toYaml | nindent 2 }}
+{{- end }}

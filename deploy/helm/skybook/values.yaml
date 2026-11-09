@@ -59,6 +59,20 @@ networkPolicy:
   # Namespace allowed to scrape management ports (Prometheus, Phase 7).
   monitoringNamespace: monitoring
 
+# Observability (ADR-0019).
+observability:
+  # OTLP/HTTP traces endpoint, e.g. http://otel-collector.monitoring.svc:4318/v1/traces. Empty = no export.
+  otlpTracesEndpoint: ""
+  samplingProbability: "0.1"
+  # ECS JSON on stdout for the cluster log agent (trace ids included).
+  jsonLogs: true
+  # Prometheus Operator objects (requires its CRDs).
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+  prometheusRule:
+    enabled: false
+
 podSecurityContext:
   runAsNonRoot: true
   seccompProfile:

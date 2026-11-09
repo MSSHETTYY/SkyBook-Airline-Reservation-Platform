@@ -61,6 +61,15 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
+        <!-- Observability (ADR-0019): Prometheus scrape endpoint, OpenTelemetry traces over OTLP. -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-opentelemetry</artifactId>
+        </dependency>
 
         <!-- Test -->
         <dependency>
@@ -141,6 +150,17 @@
                             <inputSpec>${maven.multiModuleProjectDirectory}/api/inventory/v1/inventory-api.yaml</inputSpec>
                             <apiPackage>com.skybook.inventory.api.v1</apiPackage>
                             <modelPackage>com.skybook.inventory.api.v1.model</modelPackage>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>inventory-api-v2</id>
+                        <goals>
+                            <goal>generate</goal>
+                        </goals>
+                        <configuration>
+                            <inputSpec>${maven.multiModuleProjectDirectory}/api/inventory/v2/inventory-api.yaml</inputSpec>
+                            <apiPackage>com.skybook.inventory.api.v2</apiPackage>
+                            <modelPackage>com.skybook.inventory.api.v2.model</modelPackage>
                         </configuration>
                     </execution>
                 </executions>

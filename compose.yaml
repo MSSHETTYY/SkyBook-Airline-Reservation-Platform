@@ -38,6 +38,10 @@ x-app-env: &app-env
   KEYCLOAK_ISSUER_URI: http://localhost:8180/realms/skybook
   SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/skybook/protocol/openid-connect/certs
   JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=70 -XX:+ExitOnOutOfMemoryError -XX:+UseSerialGC -Xss512k
+  # Observability (profile "observability", ADR-0019): traces to Jaeger over OTLP, ECS JSON logs for Loki.
+  MANAGEMENT_OPENTELEMETRY_TRACING_EXPORT_OTLP_ENDPOINT: ${OTEL_TRACES_ENDPOINT:-http://jaeger:4318/v1/traces}
+  MANAGEMENT_TRACING_SAMPLING_PROBABILITY: ${TRACING_SAMPLING_PROBABILITY:-1.0}
+  LOGGING_STRUCTURED_FORMAT_CONSOLE: ecs
 
 services:
 
@@ -298,6 +302,67 @@ services:
       interval: 10s
       timeout: 3s
       retries: 10
+
+  # -------------------------------------------------------------------------------- observability
+  # Profile "observability" (~0.9 GB): Grafana http://localhost:3000 (dashboards: SkyBook folder),
+  # Jaeger http://localhost:16686, Prometheus http://localhost:9090.
+  jaeger:
+    <<: *defaults
+    image: jaegertracing/jaeger:2.11.0
+    profiles: [observability]
+    mem_limit: 256m
+    ports: ["16686:16686", "4317:4317", "4318:4318"]
+
+  prometheus:
+    <<: *defaults
+    image: prom/prometheus:v3.7.3
+    profiles: [observability]
+    mem_limit: 256m
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=7d
+      - --enable-feature=exemplar-storage
+      - --web.enable-lifecycle
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    volumes:
+      - ./infra/observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./deploy/helm/skybook/files/skybook-slo-rules.yml:/etc/prometheus/rules/skybook-slo-rules.yml:ro
+    ports: ["9090:9090"]
+
+  loki:
+    <<: *defaults
+    image: grafana/loki:3.5.7
+    profiles: [observability]
+    mem_limit: 256m
+    command: ["-config.file=/etc/loki/loki.yml"]
+    volumes:
+      - ./infra/observability/loki/loki.yml:/etc/loki/loki.yml:ro
+    ports: ["3100:3100"]
+
+  alloy:
+    <<: *defaults
+    image: grafana/alloy:v1.11.3
+    profiles: [observability]
+    mem_limit: 128m
+    command: ["run", "/etc/alloy/config.alloy", "--storage.path=/var/lib/alloy/data"]
+    volumes:
+      - ./infra/observability/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  grafana:
+    <<: *defaults
+    image: grafana/grafana:12.2.1
+    profiles: [observability]
+    mem_limit: 192m
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-grafana_dev}
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/skybook-overview.json
+    volumes:
+      - ./infra/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports: ["3000:3000"]
 
   # ---------------------------------------------------------------------------------- applications
   # Profile "apps": the services as containers (needs the infrastructure profiles running). On an 8 GB

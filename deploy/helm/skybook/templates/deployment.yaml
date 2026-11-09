@@ -91,6 +91,16 @@ spec:
               value: {{ $root.Values.global.keycloak.issuerUri | quote }}
             - name: SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI
               value: {{ $root.Values.global.keycloak.jwkSetUri | quote }}
+            - name: MANAGEMENT_TRACING_SAMPLING_PROBABILITY
+              value: {{ $root.Values.observability.samplingProbability | quote }}
+            {{- with $root.Values.observability.otlpTracesEndpoint }}
+            - name: MANAGEMENT_OPENTELEMETRY_TRACING_EXPORT_OTLP_ENDPOINT
+              value: {{ . | quote }}
+            {{- end }}
+            {{- if $root.Values.observability.jsonLogs }}
+            - name: LOGGING_STRUCTURED_FORMAT_CONSOLE
+              value: ecs
+            {{- end }}
             {{- if $root.Values.vault.enabled }}
             - name: VAULT_ADDR
               value: {{ $root.Values.vault.address | quote }}

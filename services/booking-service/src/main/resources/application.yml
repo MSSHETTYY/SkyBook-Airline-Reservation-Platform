@@ -64,6 +64,15 @@ spring:
             token-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8180/realms/skybook}/protocol/openid-connect/token
 
 management:
+  metrics:
+    distribution:
+      # Histograms for the SLO latency objective (p95 < 300 ms) and burn-rate alerts (ADR-0019).
+      percentiles-histogram:
+        "[http.server.requests]": true
+      slo:
+        "[http.server.requests]": 100ms,300ms,1s
+    tags:
+      application: ${spring.application.name}
   endpoints:
     web:
       exposure:

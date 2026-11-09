@@ -1,0 +1,48 @@
+// Grafana Alloy: ships the JSON logs of the SkyBook containers to Loki.
+// Services log ECS JSON (LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs), so level and trace id become
+// queryable fields, and Grafana links each log line to its trace in Jaeger.
+
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+}
+
+discovery.relabel "skybook" {
+  targets = discovery.docker.containers.targets
+
+  // Only containers of this compose project.
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+    regex         = "skybook"
+    action        = "keep"
+  }
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service"
+  }
+}
+
+loki.source.docker "containers" {
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.relabel.skybook.output
+  forward_to = [loki.process.ecs.receiver]
+}
+
+loki.process "ecs" {
+  stage.json {
+    expressions = { level = "\"log.level\"", trace_id = "traceId" }
+  }
+  // Low-cardinality fields become labels; the trace id stays structured metadata (high cardinality).
+  stage.labels {
+    values = { level = "" }
+  }
+  stage.structured_metadata {
+    values = { trace_id = "" }
+  }
+  forward_to = [loki.write.local.receiver]
+}
+
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

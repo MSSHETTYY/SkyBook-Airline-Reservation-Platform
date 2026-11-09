@@ -1,0 +1,146 @@
+openapi: 3.0.3
+info:
+  title: SkyBook Inventory API
+  version: 2.0.0
+  description: |
+    Version 2 of flight search. Breaking changes compared with `GET /api/v1/flights`, hence a new major
+    version (v1 keeps working until its `Sunset` date and announces this successor in a `Link` header):
+
+    * a departure **date range** (up to 7 days) instead of a single date;
+    * **offers per cabin** (seats left and from-price for economy and business) instead of one total;
+    * a **paging envelope** with sorting, filtering by cabin and maximum price.
+
+    Errors are RFC 9457 `application/problem+json` documents with a stable `code`, as in v1.
+servers:
+  - url: /
+tags:
+  - name: FlightOffers
+    description: Flight search with per-cabin offers
+
+paths:
+  /api/v2/flights:
+    get:
+      tags: [FlightOffers]
+      operationId: searchFlightOffers
+      summary: Search bookable flights over a date range, with seats and prices per cabin
+      parameters:
+        - name: origin
+          in: query
+          required: true
+          schema: { $ref: '#/components/schemas/AirportCode' }
+        - name: destination
+          in: query
+          required: true
+          schema: { $ref: '#/components/schemas/AirportCode' }
+        - name: departureFrom
+          in: query
+          required: true
+          description: First departure date (UTC), inclusive
+          schema: { type: string, format: date }
+        - name: departureTo
+          in: query
+          required: false
+          description: Last departure date (UTC), inclusive; defaults to departureFrom; at most 6 days later
+          schema: { type: string, format: date }
+        - name: passengers
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 9, default: 1 }
+        - name: cabin
+          in: query
+          required: false
+          description: Only flights with enough seats in this cabin
+          schema: { $ref: '#/components/schemas/CabinClass' }
+        - name: maxPrice
+          in: query
+          required: false
+          description: Only offers whose per-seat from-price is at most this amount (flight currency)
+          schema: { type: number, minimum: 0 }
+        - name: sort
+          in: query
+          required: false
+          schema: { type: string, enum: [DEPARTURE, PRICE], default: DEPARTURE }
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 0, default: 0 }
+        - name: size
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        '200':
+          description: A page of flights
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FlightOfferPage' }
+        '400':
+          description: Invalid parameters (code VALIDATION_FAILED), e.g. a date range longer than 7 days
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+components:
+  schemas:
+    AirportCode:
+      type: string
+      pattern: '^[A-Z]{3}$'
+
+    CabinClass:
+      type: string
+      enum: [ECONOMY, BUSINESS]
+
+    Money:
+      type: object
+      required: [amount, currency]
+      properties:
+        amount: { type: number }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+
+    CabinOffer:
+      type: object
+      required: [cabinClass, seatsAvailable]
+      properties:
+        cabinClass: { $ref: '#/components/schemas/CabinClass' }
+        seatsAvailable: { type: integer, minimum: 0 }
+        fromPrice:
+          $ref: '#/components/schemas/Money'
+          description: Cheapest available seat in this cabin; absent when the cabin is sold out
+
+    FlightOffer:
+      type: object
+      required: [flightId, flightNumber, origin, destination, departureTime, arrivalTime, durationMinutes,
+                 aircraftType, cabins]
+      properties:
+        flightId: { type: integer, format: int64 }
+        flightNumber: { type: string, example: SB101 }
+        origin: { $ref: '#/components/schemas/AirportCode' }
+        destination: { $ref: '#/components/schemas/AirportCode' }
+        departureTime: { type: string, format: date-time }
+        arrivalTime: { type: string, format: date-time }
+        durationMinutes: { type: integer }
+        aircraftType: { type: string }
+        cabins:
+          type: array
+          items: { $ref: '#/components/schemas/CabinOffer' }
+
+    FlightOfferPage:
+      type: object
+      required: [items, page, size, totalElements]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/FlightOffer' }
+        page: { type: integer }
+        size: { type: integer }
+        totalElements: { type: integer, format: int64 }
+
+    Problem:
+      type: object
+      properties:
+        type: { type: string, format: uri }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string, format: uri }
+        code: { type: string }
+        correlationId: { type: string }
+        timestamp: { type: string, format: date-time }

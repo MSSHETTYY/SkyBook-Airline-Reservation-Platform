@@ -1,0 +1,80 @@
+# SkyBook service level objectives (docs/slo.md) as recording rules and multi-window burn-rate alerts
+# (Google SRE workbook, chapter 5). Single source of truth: packaged as a PrometheusRule by this chart
+# (templates/prometheusrule.yaml) and mounted into the local Prometheus by compose.yaml.
+#
+#   Availability: 99.5% of API requests through the gateway succeed (non-5xx) over 30 days.
+#   Latency:      95% of flight searches complete within 300 ms.
+groups:
+  - name: skybook-slo-recording
+    interval: 30s
+    rules:
+      - record: skybook:gateway_requests:rate5m
+        expr: sum(rate(http_server_requests_seconds_count{application="api-gateway", uri!~"/actuator.*"}[5m]))
+      - record: skybook:gateway_errors:rate5m
+        expr: sum(rate(http_server_requests_seconds_count{application="api-gateway", uri!~"/actuator.*", status=~"5.."}[5m]))
+      - record: skybook:gateway_error_ratio:rate5m
+        expr: skybook:gateway_errors:rate5m / clamp_min(skybook:gateway_requests:rate5m, 1e-9)
+      - record: skybook:gateway_error_ratio:rate30m
+        expr: >-
+          sum(rate(http_server_requests_seconds_count{application="api-gateway", uri!~"/actuator.*", status=~"5.."}[30m]))
+          / clamp_min(sum(rate(http_server_requests_seconds_count{application="api-gateway", uri!~"/actuator.*"}[30m])), 1e-9)
+      - record: skybook:gateway_error_ratio:rate1h
+        expr: >-
+          sum(rate(http_server_requests_seconds_count{application="api-gateway", uri!~"/actuator.*", status=~"5.."}[1h]))
+          / clamp_min(sum(rate(http_server_requests_seconds_count{application="api-gateway", uri!~"/actuator.*"}[1h])), 1e-9)
+      - record: skybook:gateway_error_ratio:rate6h
+        expr: >-
+          sum(rate(http_server_requests_seconds_count{application="api-gateway", uri!~"/actuator.*", status=~"5.."}[6h]))
+          / clamp_min(sum(rate(http_server_requests_seconds_count{application="api-gateway", uri!~"/actuator.*"}[6h])), 1e-9)
+      - record: skybook:flight_search_latency_seconds:p95_5m
+        expr: >-
+          histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{application="inventory-service",
+          uri="/api/v1/flights", method="GET"}[5m])))
+
+  - name: skybook-slo-alerts
+    rules:
+      # Error budget = 0.5%. Page when it burns 14.4x too fast (2% of the monthly budget in 1 h) on both
+      # a long and a short window, ticket at 6x (5% in 6 h). The short window makes alerts reset quickly.
+      - alert: SkyBookErrorBudgetFastBurn
+        expr: skybook:gateway_error_ratio:rate1h > (14.4 * 0.005) and skybook:gateway_error_ratio:rate5m > (14.4 * 0.005)
+        for: 2m
+        labels: { severity: page, slo: availability }
+        annotations:
+          summary: Gateway error budget burning fast ({{ $value | humanizePercentage }} errors)
+          runbook_url: https://github.com/MSSHETTYY/SkyBook-Airline-Reservation-Platform/blob/main/docs/runbook.md#high-error-rate
+      - alert: SkyBookErrorBudgetSlowBurn
+        expr: skybook:gateway_error_ratio:rate6h > (6 * 0.005) and skybook:gateway_error_ratio:rate30m > (6 * 0.005)
+        for: 15m
+        labels: { severity: ticket, slo: availability }
+        annotations:
+          summary: Gateway error budget burning steadily ({{ $value | humanizePercentage }} errors)
+          runbook_url: https://github.com/MSSHETTYY/SkyBook-Airline-Reservation-Platform/blob/main/docs/runbook.md#high-error-rate
+      - alert: SkyBookFlightSearchSlow
+        expr: skybook:flight_search_latency_seconds:p95_5m > 0.3
+        for: 10m
+        labels: { severity: ticket, slo: latency }
+        annotations:
+          summary: Flight search p95 is {{ $value | humanizeDuration }} (objective 300 ms)
+          runbook_url: https://github.com/MSSHETTYY/SkyBook-Airline-Reservation-Platform/blob/main/docs/runbook.md#slow-flight-search
+      - alert: SkyBookCircuitBreakerOpen
+        expr: max by (application, name) (resilience4j_circuitbreaker_state{state="open"}) == 1
+        for: 1m
+        labels: { severity: ticket }
+        annotations:
+          summary: Circuit breaker {{ $labels.name }} open in {{ $labels.application }}
+          runbook_url: https://github.com/MSSHETTYY/SkyBook-Airline-Reservation-Platform/blob/main/docs/runbook.md#circuit-breaker-open
+      - alert: SkyBookServiceDown
+        expr: up{application!=""} == 0
+        for: 2m
+        labels: { severity: page }
+        annotations:
+          summary: "{{ $labels.application }} is not answering its metrics endpoint"
+          runbook_url: https://github.com/MSSHETTYY/SkyBook-Airline-Reservation-Platform/blob/main/docs/runbook.md#service-down
+      - alert: SkyBookJvmHeapPressure
+        expr: >-
+          max by (application) (jvm_memory_used_bytes{area="heap"}) / max by (application) (jvm_memory_max_bytes{area="heap"} > 0) > 0.9
+        for: 10m
+        labels: { severity: ticket }
+        annotations:
+          summary: "{{ $labels.application }} heap above 90% for 10 minutes"
+          runbook_url: https://github.com/MSSHETTYY/SkyBook-Airline-Reservation-Platform/blob/main/docs/runbook.md#memory-pressure

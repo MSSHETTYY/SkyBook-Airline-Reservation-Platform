@@ -82,7 +82,20 @@ Decisions are recorded in [docs/adr](docs/adr):
 [0013 outbox](docs/adr/0013-transactional-outbox.md) ·
 [0014 booking saga](docs/adr/0014-booking-saga.md) ·
 [0015 resilience and contracts](docs/adr/0015-resilience-and-contracts.md) ·
-[0016 Solace for notifications](docs/adr/0016-solace-for-notifications.md)
+[0016 Solace for notifications](docs/adr/0016-solace-for-notifications.md) ·
+[0017 web UI](docs/adr/0017-web-ui-architecture.md) ·
+[0018 delivery and Kubernetes](docs/adr/0018-delivery-pipeline-and-kubernetes.md) ·
+[0019 observability](docs/adr/0019-observability.md) ·
+[0020 API versioning](docs/adr/0020-api-versioning.md)
+
+More documentation:
+- [C4 diagrams and the saga sequence](docs/architecture/c4.md)
+- [Non-functional requirements](docs/nfr.md)
+- [SLOs and the error budget policy](docs/slo.md)
+- [Threat model (STRIDE)](docs/threat-model.md)
+- [PCI DSS scope](docs/pci-dss.md)
+- [Runbook](docs/runbook.md)
+- [Post-mortems](docs/postmortems/README.md)
 
 ## Repository layout
 
@@ -141,6 +154,8 @@ Run one or two profiles at a time. [ADR-0003](docs/adr/0003-local-runtime-footpr
 | `auth`         | Keycloak               | 768 MB       | Phase 2 onward   |
 | `notification` | MongoDB, Mailpit       | ~0.6 GB      | Phase 4          |
 | `partners`     | WireMock               | 256 MB       | Phase 3 onward   |
+| `apps`         | All services + web UI as containers | ~3.2 GB | Phase 6 onward |
+| `observability`| Jaeger, Prometheus, Loki, Alloy, Grafana | ~0.9 GB | Phase 7 onward |
 
 ### Web UI
 
@@ -187,6 +202,19 @@ Pipelines:
 - [api-tests.yml](.github/workflows/api-tests.yml): Newman against the full stack.
 - [deploy.yml](.github/workflows/deploy.yml): manual promotion to staging or production.
 
+### Observability, load and chaos testing
+
+```bash
+docker compose --profile observability up -d   # Grafana :3000, Jaeger :16686, Prometheus :9090, Loki :3100
+k6 run -e PROFILE=smoke tests/load/search-and-book.js    # 5 users for 30 s
+k6 run tests/load/search-and-book.js                     # ramps to 500 users; fails if p95 objectives are missed
+./tests/chaos/kafka-outage.sh                            # pauses Kafka mid-booking, expects full recovery
+```
+
+App containers send traces to Jaeger and ECS JSON logs to Loki. Grafana opens on the *SkyBook - service
+overview and SLOs* dashboard, and log lines link to their traces. For services started from the IDE, set
+`MANAGEMENT_OPENTELEMETRY_TRACING_EXPORT_OTLP_ENDPOINT=http://localhost:4318/v1/traces`.
+
 ### Ports
 
 | Port  | Component                        | Port  | Component                  |
@@ -198,6 +226,8 @@ Pipelines:
 | 9092  | Kafka (from the host)            | 8190  | Solace PubSub+ Manager     |
 | 55555 | Solace SMF (JMS)                 | 8080  | api-gateway (Phase 2)      |
 | 5173  | web-ui dev server (Vite)         | 8088  | web-ui container (nginx)   |
+| 3000  | Grafana                          | 16686 | Jaeger UI                  |
+| 9090  | Prometheus                       | 3100  | Loki                       |
 
 The application services will use ports 8081-8085.
 
@@ -212,7 +242,7 @@ The application services will use ports 8081-8085.
 | 4     | notification-service (Solace JMS, Mailpit, MongoDB audit trail), Kafka-to-Solace bridge    | Done    |
 | 5     | web-ui (React + TS, accessible), Vitest/RTL, Playwright + axe                              | Done    |
 | 6     | Dockerfiles, Helm on kind, full CI/CD (SonarQube, Trivy, Newman, GHCR, deploy)             | Done    |
-| 7     | OpenTelemetry, Prometheus/Grafana SLOs, Loki, k6 load test, chaos tests, final docs        | Planned |
+| 7     | OpenTelemetry, Prometheus/Grafana SLOs, Loki, k6 load test, chaos tests, final docs        | Done    |
 | 8     | Optional: Spring AI booking assistant (Ollama), Expo mobile app                            | Planned |
 
 ## Payments: Stripe test mode or the fake provider

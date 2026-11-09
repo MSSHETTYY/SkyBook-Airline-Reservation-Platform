@@ -40,7 +40,7 @@ class GatewaySecurityConfig {
                 .authorizeExchange(exchanges -> exchanges
                         .pathMatchers(HttpMethod.OPTIONS).permitAll()
                         .pathMatchers(HttpMethod.GET, "/api/v1/flights", "/api/v1/flights/*",
-                                "/api/v1/flights/*/seats").permitAll()
+                                "/api/v1/flights/*/seats", "/api/v2/flights").permitAll()
                         // Stripe calls the webhook; it is authenticated by its signature, not a JWT.
                         .pathMatchers(HttpMethod.POST, "/api/v1/payments/webhooks/stripe").permitAll()
                         .pathMatchers("/actuator/health/**", "/actuator/info", "/actuator/prometheus").permitAll()

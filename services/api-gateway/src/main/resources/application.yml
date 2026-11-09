@@ -45,7 +45,7 @@ spring:
               uri: ${skybook.gateway.inventory-uri}
               predicates:
                 - Method=GET
-                - Path=/api/v1/flights,/api/v1/flights/{flightId},/api/v1/flights/{flightId}/seats
+                - Path=/api/v1/flights,/api/v1/flights/{flightId},/api/v1/flights/{flightId}/seats,/api/v2/flights
               filters:
                 - name: CircuitBreaker
                   args:
@@ -84,6 +84,15 @@ spring:
                     statusCodes: [502, 503, 504]
 
 management:
+  metrics:
+    distribution:
+      # Histograms for the SLO latency objective (p95 < 300 ms) and burn-rate alerts (ADR-0019).
+      percentiles-histogram:
+        "[http.server.requests]": true
+      slo:
+        "[http.server.requests]": 100ms,300ms,1s
+    tags:
+      application: ${spring.application.name}
   endpoints:
     web:
       exposure:
