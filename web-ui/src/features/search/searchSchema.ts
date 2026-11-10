@@ -5,7 +5,7 @@ import { fromIsoDate, toIsoDate } from '../../lib/format';
 const airport = z
   .string()
   .trim()
-  .regex(/^[A-Za-z]{3}$/, 'Enter a 3-letter airport code, for example DXB')
+  .regex(/^[A-Za-z]{3}$/, 'Choose a city or airport from the list')
   .transform((code) => code.toUpperCase());
 
 export function searchSchema(today: Date = new Date()) {

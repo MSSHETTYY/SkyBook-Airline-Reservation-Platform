@@ -4,6 +4,13 @@ import { Link as RouterLink } from 'react-router';
 import type { FlightSummary } from '../../api/types';
 import { FlightStatus } from '../../api/types';
 import { formatDateTime, formatDuration, formatMoney, formatTime } from '../../lib/format';
+import { findAirport } from './airports';
+
+function place(code: string): string {
+  const airport = findAirport(code);
+  if (!airport) return code;
+  return airport.name.startsWith(airport.city) ? airport.name : `${airport.city} ${airport.name}`;
+}
 
 interface Props {
   flight: FlightSummary;
@@ -29,6 +36,9 @@ export function FlightCard({ flight, passengers, action }: Props) {
           <Box sx={{ flexGrow: 1 }}>
             <Typography id={headingId} variant="h3" component="h3">
               {flight.flightNumber}: {flight.origin} to {flight.destination}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              {place(flight.origin)} → {place(flight.destination)}
             </Typography>
             <Typography>
               <time dateTime={flight.departureTime.toISOString()}>{formatDateTime(flight.departureTime)}</time>

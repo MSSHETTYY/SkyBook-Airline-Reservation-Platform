@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-import { inDaysIso, signIn } from './support';
+import { inDaysIso, pickAirport, signIn } from './support';
 
 test.describe('staff', () => {
   test('admin schedules a flight that customers can then find', async ({ page }) => {
@@ -19,8 +19,8 @@ test.describe('staff', () => {
     await expect(dialog).toBeHidden();
 
     await page.getByRole('link', { name: 'Search flights' }).click();
-    await page.getByRole('textbox', { name: /From/ }).fill('BOM');
-    await page.getByRole('textbox', { name: /To/ }).fill('LHR');
+    await pickAirport(page, /From/, 'BOM');
+    await pickAirport(page, /To/, 'LHR');
     await page.getByLabel(/Departure date/).fill(inDaysIso(6));
     await page.getByRole('button', { name: 'Search' }).click();
     await expect(page.getByRole('article', { name: /SB777: BOM to LHR/ })).toBeVisible();

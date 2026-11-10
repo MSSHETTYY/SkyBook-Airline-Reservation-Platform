@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
-import { Box, Button, IconButton, MenuItem, Paper, Stack, TextField, Tooltip, Typography } from '@mui/material';
+import { Box, Button, Chip, IconButton, MenuItem, Paper, Stack, TextField, Tooltip, Typography } from '@mui/material';
 import { useMemo } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { useSearchParams } from 'react-router';
@@ -9,6 +9,8 @@ import { useFlightSearch } from '../../api/hooks';
 import { EmptyState, LoadingState } from '../../components/LoadingState';
 import { PageTitle } from '../../components/PageTitle';
 import { ProblemAlert } from '../../components/ProblemAlert';
+import { AirportField } from './AirportField';
+import { airportLabel, POPULAR_ROUTES } from './airports';
 import { FlightCard } from './FlightCard';
 import type { SearchFormInput, SearchFormValues } from './searchSchema';
 import { parseSearchParams, searchSchema, toSearchParams, tomorrow } from './searchSchema';
@@ -35,6 +37,13 @@ export function SearchPage() {
     setValue('destination', origin);
   };
 
+  /** One click on a suggestion: fill the route and search with the chosen date and passengers. */
+  const searchRoute = (origin: string, destination: string) => {
+    setValue('origin', origin, { shouldValidate: true });
+    setValue('destination', destination, { shouldValidate: true });
+    void handleSubmit(onSubmit)();
+  };
+
   return (
     <>
       <PageTitle title="Search flights">Where would you like to go?</PageTitle>
@@ -48,14 +57,15 @@ export function SearchPage() {
               name="origin"
               control={control}
               render={({ field, fieldState }) => (
-                <TextField
-                  {...field}
+                <AirportField
+                  kind="origin"
                   label="From"
-                  required
-                  autoComplete="off"
-                  slotProps={{ htmlInput: { maxLength: 3, style: { textTransform: 'uppercase' } } }}
-                  error={!!fieldState.error}
-                  helperText={fieldState.error?.message ?? 'Airport code'}
+                  value={field.value}
+                  onChange={field.onChange}
+                  onBlur={field.onBlur}
+                  name={field.name}
+                  inputRef={field.ref}
+                  error={fieldState.error?.message}
                 />
               )}
             />
@@ -68,14 +78,15 @@ export function SearchPage() {
               name="destination"
               control={control}
               render={({ field, fieldState }) => (
-                <TextField
-                  {...field}
+                <AirportField
+                  kind="destination"
                   label="To"
-                  required
-                  autoComplete="off"
-                  slotProps={{ htmlInput: { maxLength: 3, style: { textTransform: 'uppercase' } } }}
-                  error={!!fieldState.error}
-                  helperText={fieldState.error?.message ?? 'Airport code'}
+                  value={field.value}
+                  onChange={field.onChange}
+                  onBlur={field.onBlur}
+                  name={field.name}
+                  inputRef={field.ref}
+                  error={fieldState.error?.message}
                 />
               )}
             />
@@ -122,19 +133,41 @@ export function SearchPage() {
             </Button>
           </Stack>
         </Box>
+        <Box component="nav" aria-label="Popular routes" sx={{ mt: 2 }}>
+          <Typography variant="body2" color="text.secondary" component="h3" sx={{ mb: 1 }}>
+            Popular routes
+          </Typography>
+          <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" component="ul"
+            sx={{ listStyle: 'none', p: 0, m: 0 }}>
+            {POPULAR_ROUTES.map(([from, to]) => (
+              <li key={`${from}-${to}`}>
+                <Chip
+                  clickable
+                  variant="outlined"
+                  color="primary"
+                  // Visible text is the accessible name (WCAG 2.5.3 label in name); the nav heading gives context.
+                  label={`${airportLabel(from)} → ${airportLabel(to)}`}
+                  onClick={() => searchRoute(from, to)}
+                />
+              </li>
+            ))}
+          </Stack>
+        </Box>
       </Paper>
 
       <Box component="section" aria-labelledby="results-heading" aria-busy={search.isFetching}>
         {criteria && (
           <Typography id="results-heading" variant="h2" sx={{ mb: 2 }}>
-            Flights from {criteria.origin} to {criteria.destination}
+            Flights from {airportLabel(criteria.origin)} to {airportLabel(criteria.destination)}
           </Typography>
         )}
         {search.isLoading && <LoadingState label="Searching flights..." />}
         <ProblemAlert problem={search.error} onRetry={() => void search.refetch()} />
         {search.data && search.data.length === 0 && (
           <EmptyState title="No flights found">
-            <Typography>Try another date or route.</Typography>
+            <Typography>
+              No SkyBook flight on this route and date. Try another date or one of the popular routes above.
+            </Typography>
           </EmptyState>
         )}
         <Typography role="status" className="visually-hidden">

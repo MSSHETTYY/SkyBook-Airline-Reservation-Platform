@@ -38,10 +38,16 @@ export function inDaysIso(days: number): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+/** Types into the city/airport combobox and picks the suggestion for that IATA code. */
+export async function pickAirport(page: Page, label: RegExp, code: string): Promise<void> {
+  await page.getByRole('combobox', { name: label }).fill(code);
+  await page.getByRole('option', { name: new RegExp(`^${code} `) }).click();
+}
+
 /** Searches from the home page with the given route and date. */
 export async function search(page: Page, origin: string, destination: string, date: string): Promise<void> {
-  await page.getByRole('textbox', { name: /From/ }).fill(origin);
-  await page.getByRole('textbox', { name: /To/ }).fill(destination);
+  await pickAirport(page, /From/, origin);
+  await pickAirport(page, /To/, destination);
   await page.getByLabel(/Departure date/).fill(date);
   await page.getByRole('button', { name: 'Search' }).click();
 }

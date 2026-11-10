@@ -29,32 +29,74 @@ describe('SearchPage', () => {
   it('validates the form before searching', async () => {
     const user = userEvent.setup();
     renderApp();
-    const from = screen.getByRole('textbox', { name: /From/ });
-    await user.clear(from);
-    await user.type(from, 'D1');
-    await user.clear(screen.getByRole('textbox', { name: /To/ }));
+    await user.clear(screen.getByRole('combobox', { name: /From/ }));
+    await user.clear(screen.getByRole('combobox', { name: /To/ }));
     await user.click(screen.getByRole('button', { name: 'Search' }));
 
-    expect(await screen.findAllByText('Enter a 3-letter airport code, for example DXB')).toHaveLength(2);
-    expect(screen.getByRole('textbox', { name: /From/ })).toHaveAttribute('aria-invalid', 'true');
+    expect(await screen.findAllByText('Choose a city or airport from the list')).toHaveLength(2);
+    expect(screen.getByRole('combobox', { name: /From/ })).toHaveAttribute('aria-invalid', 'true');
     expect(screen.getByTestId('location')).toHaveTextContent(/^\/$/);
+  });
+
+  it('suggests airports by city, old city name or code, and keeps the code for the search', async () => {
+    const user = userEvent.setup();
+    renderApp();
+    const to = screen.getByRole('combobox', { name: /To/ });
+
+    await user.clear(to);
+    await user.type(to, 'dub');
+    const options = await screen.findAllByRole('option');
+    expect(options.map((o) => o.textContent)).toEqual(expect.arrayContaining([
+      expect.stringContaining('Dubai International'), expect.stringContaining('Dublin Airport')]));
+    await user.click(screen.getByRole('option', { name: /DUB Dublin/ }));
+    expect(to).toHaveValue('Dublin (DUB)');
+
+    await user.clear(to);
+    await user.type(to, 'Bombay');
+    await user.keyboard('{Enter}');
+    expect(to).toHaveValue('Mumbai (BOM)');
+
+    await user.click(screen.getByRole('button', { name: 'Search' }));
+    expect(await screen.findByRole('heading', { name: 'Flights from Dubai (DXB) to Mumbai (BOM)' })).toBeInTheDocument();
+    expect(screen.getByTestId('location')).toHaveTextContent('origin=DXB&destination=BOM');
+    expect(await screen.findByText('Dubai International → Mumbai Chhatrapati Shivaji Maharaj International'))
+      .toBeInTheDocument();
   });
 
   it('swaps origin and destination and rejects the same airport twice', async () => {
     const user = userEvent.setup();
     renderApp();
     await user.click(screen.getByRole('button', { name: 'Swap origin and destination' }));
-    expect(screen.getByRole('textbox', { name: /From/ })).toHaveValue('LHR');
-    await user.clear(screen.getByRole('textbox', { name: /To/ }));
-    await user.type(screen.getByRole('textbox', { name: /To/ }), 'lhr');
+    expect(screen.getByRole('combobox', { name: /From/ })).toHaveValue('London (LHR)');
+    const to = screen.getByRole('combobox', { name: /To/ });
+    await user.clear(to);
+    await user.type(to, 'heathrow');
+    await user.keyboard('{Enter}');
     await user.click(screen.getByRole('button', { name: 'Search' }));
     expect(await screen.findByText('Destination must differ from the origin')).toBeInTheDocument();
+  });
+
+  it('offers popular routes as one-click searches', async () => {
+    const user = userEvent.setup();
+    renderApp();
+    await user.click(screen.getByRole('button', { name: 'London (LHR) → New York (JFK)' }));
+    expect(await screen.findByRole('article', { name: /SB301: LHR to JFK/ })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: /From/ })).toHaveValue('London (LHR)');
+  });
+
+  it('explains when nothing matches', async () => {
+    const user = userEvent.setup();
+    renderApp();
+    const from = screen.getByRole('combobox', { name: /From/ });
+    await user.clear(from);
+    await user.type(from, 'atlantis');
+    expect(await screen.findByText('No airport matches. Try a city name, e.g. Dubai')).toBeInTheDocument();
   });
 
   it('restores a search from the URL and shows an empty result', async () => {
     renderApp({ route: `/?origin=JFK&destination=DXB&date=${tomorrow()}&passengers=2` });
     expect(await screen.findByText('No flights found')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Flights from JFK to DXB' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Flights from New York (JFK) to Dubai (DXB)' })).toBeInTheDocument();
   });
 
   it('shows server problems with a retry', async () => {
