@@ -5,8 +5,14 @@ import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -52,11 +58,20 @@ class RedisRateLimiterIT {
         BACKEND.stubFor(get(urlPathEqualTo("/api/v1/flights/1")).willReturn(okJson("{}")));
         WebTestClient client = WebTestClient.bindToServer().baseUrl("http://localhost:" + port).build();
 
-        List<Integer> statuses = new ArrayList<>();
-        for (int i = 0; i < 60; i++) {
-            statuses.add(client.get().uri("/api/v1/flights/1").exchange().returnResult(String.class)
-                    .getStatus().value());
+        // Warm up (connection pool, route, Redis script) so the burst below is not slowed by first-call costs.
+        assertThat(client.get().uri("/api/v1/flights/1").exchange().returnResult(String.class).getStatus().value())
+                .isEqualTo(200);
+
+        // A genuinely simultaneous burst of 100 requests against a bucket of 40 (refilling 20/s). Sequential calls
+        // could be slow enough on a CI runner for the bucket to refill between them, which made this test flaky.
+        HttpClient http = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build();
+        HttpRequest request = HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/v1/flights/1"))
+                .timeout(Duration.ofSeconds(20)).build();
+        List<CompletableFuture<HttpResponse<Void>>> burst = new ArrayList<>();
+        for (int i = 0; i < 100; i++) {
+            burst.add(http.sendAsync(request, HttpResponse.BodyHandlers.discarding()));
         }
+        List<Integer> statuses = burst.stream().map(CompletableFuture::join).map(HttpResponse::statusCode).toList();
 
         assertThat(statuses).contains(200, 429);
     }
