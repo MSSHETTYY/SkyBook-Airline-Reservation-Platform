@@ -3,7 +3,7 @@
 #   docker build -f services/Dockerfile --build-arg SERVICE=booking-service -t skybook-booking-service:dev .
 
 # ---------------------------------------------------------------------------------------------- build
-FROM eclipse-temurin:21-jdk-noble AS build
+FROM eclipse-temurin:25-jdk-noble AS build
 WORKDIR /src
 
 # Wrapper and POMs first: dependency resolution is cached until a POM changes.
@@ -28,7 +28,7 @@ RUN java -Djarmode=tools -jar "services/${SERVICE}/target/${SERVICE}-"*.jar \
       extract --layers --launcher --destination /layers
 
 # -------------------------------------------------------------------------------------------- runtime
-FROM eclipse-temurin:21-jre-noble
+FROM eclipse-temurin:25-jre-noble
 ARG SERVICE
 LABEL org.opencontainers.image.title="skybook-${SERVICE}" \
       org.opencontainers.image.source="https://github.com/MSSHETTYY/SkyBook-Airline-Reservation-Platform" \
