@@ -35,3 +35,6 @@ infra/certs/out/
 # Test-only certificates (throwaway CA, private key deleted) used by the mTLS tests
 !libs/common/src/test/resources/test-certs/
 !libs/common/src/test/resources/test-certs/*
+
+# Python
+__pycache__/
