@@ -2,13 +2,16 @@ package com.skybook.notification.adapter;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.Duration;
 import java.time.Instant;
 
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.containers.output.ToStringConsumer;
 import org.testcontainers.containers.wait.strategy.Wait;
-import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import com.mongodb.client.MongoClients;
@@ -23,19 +26,41 @@ import com.skybook.notification.domain.AuditRecord;
 @Testcontainers(disabledWithoutDocker = true)
 class MongoStoresIT {
 
-    @Container
+    /** Everything the server printed, kept even when it fails to start (the container is gone by then). */
+    private static final ToStringConsumer SERVER_LOG = new ToStringConsumer();
+
     static final GenericContainer<?> MONGO = new GenericContainer<>("mongo:8.0.34")
             .withExposedPorts(27017)
-            .waitingFor(Wait.forLogMessage(".*Waiting for connections.*", 1));
+            .withLogConsumer(SERVER_LOG)
+            // Same matcher as Testcontainers' own MongoDB module (case-insensitive).
+            .waitingFor(Wait.forLogMessage("(?i).*waiting for connections.*", 1)
+                    .withStartupTimeout(Duration.ofMinutes(2)));
+
+    @BeforeAll
+    static void startServer() {
+        try {
+            MONGO.start();
+        } catch (RuntimeException failure) {
+            throw new AssertionError("MongoDB did not start. Server log tail: " + tail(), failure);
+        }
+    }
+
+    @AfterAll
+    static void stopServer() {
+        MONGO.stop();
+    }
+
+    private static String tail() {
+        String log = SERVER_LOG.toUtf8String();
+        return log.substring(Math.max(0, log.length() - 1500));
+    }
 
     @Test
     void auditTrailAndContactProjection() {
         try {
             verifyStores();
         } catch (RuntimeException | AssertionError failure) {
-            // Make a CI failure self-explanatory: include what the server said.
-            String logs = MONGO.getLogs();
-            throw new AssertionError("MongoDB log tail: " + logs.substring(Math.max(0, logs.length() - 1500)), failure);
+            throw new AssertionError("MongoDB log tail: " + tail(), failure);
         }
     }
 
