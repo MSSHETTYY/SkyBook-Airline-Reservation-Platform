@@ -54,10 +54,20 @@ class PaymentEventsKafkaTest extends PaymentTestSupport {
         try (Consumer<String, String> consumer = new DefaultKafkaConsumerFactory<>(props, new StringDeserializer(),
                 new StringDeserializer()).createConsumer()) {
             broker.consumeFromAnEmbeddedTopic(consumer, PaymentEvents.TOPIC);
-            ConsumerRecord<String, String> record = KafkaTestUtils.getRecords(consumer, Duration.ofSeconds(10))
-                    .records(PaymentEvents.TOPIC).iterator().next();
+            // Other tests share the database and leave their own outbox events, which the relay publishes too:
+            // look for this booking's PaymentCompleted instead of assuming it is the first record on the topic.
+            ConsumerRecord<String, String> record = null;
+            long deadline = System.nanoTime() + Duration.ofSeconds(20).toNanos();
+            while (record == null && System.nanoTime() < deadline) {
+                for (ConsumerRecord<String, String> candidate : KafkaTestUtils.getRecords(consumer,
+                        Duration.ofSeconds(2)).records(PaymentEvents.TOPIC)) {
+                    if ("KFKA22".equals(candidate.key()) && candidate.value().contains("\"PaymentCompleted\"")) {
+                        record = candidate;
+                    }
+                }
+            }
 
-            assertThat(record.key()).isEqualTo("KFKA22");
+            assertThat(record).as("PaymentCompleted for KFKA22 on " + PaymentEvents.TOPIC).isNotNull();
             var event = codec.decode(record.value(), PaymentEvents.PaymentCompleted.class);
             assertThat(event.eventType()).isEqualTo("PaymentCompleted");
             assertThat(event.payload().paymentId()).isEqualTo(payment.getId());
