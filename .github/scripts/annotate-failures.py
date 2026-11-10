@@ -12,7 +12,7 @@ MAX = 10
 
 
 def escape(text: str) -> str:
-    text = " ".join(text.split())[:900]
+    text = " ".join(text.split())[:3000]
     return text.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
 
 
@@ -25,8 +25,10 @@ def failing_tests(directories):
                     if node is not None:
                         trace = (node.text or "").strip().splitlines()
                         causes = [line.strip() for line in trace if line.strip().startswith("Caused by:")]
-                        # The deepest cause is what a "Failed to load ApplicationContext" really means.
-                        detail = causes[-1] if causes else " | ".join(trace[:3])
+                        # Both ends matter: the top message carries test-supplied context (e.g. a server log
+                        # tail), the deepest cause explains a "Failed to load ApplicationContext".
+                        top = (node.get("message") or (trace[0] if trace else ""))[:1500]
+                        detail = f"{top} || root {causes[-1]}" if causes else " | ".join(trace[:3])
                         yield f"{case.get('classname')}.{case.get('name')}", detail
 
 
