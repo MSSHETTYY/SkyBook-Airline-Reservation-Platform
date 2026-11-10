@@ -158,7 +158,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Trivy filesystem scan (SARIF for the Security tab)
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scanners: vuln,secret,misconfig
@@ -177,7 +177,7 @@ jobs:
 
       # Gate: fail the build on fixable critical/high findings (the SARIF step above never fails).
       - name: Trivy gate
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scanners: vuln,secret,misconfig
@@ -279,7 +279,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ matrix.image }}
 
       - name: Trivy image scan
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ env.REGISTRY }}/skybook-${{ matrix.image }}:sha-${{ github.sha }}
           ignore-unfixed: true
