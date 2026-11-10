@@ -128,6 +128,12 @@ PubSub+ Manager (copy to `q.notification`) once SMTP or the template issue is fi
    mode), then the payment-service logs for the webhook.
 4. Goodwill compensation: an admin issues a manual refund with a note (audited).
 
+## Known platform issues
+
+| Issue | Effect | Mitigation |
+|-------|--------|------------|
+| MongoDB 8 refuses to start on Linux kernel 6.19+ ([SERVER-121912](https://jira.mongodb.org/browse/SERVER-121912), TCMalloc rseq bug) | notification-service's audit store is unavailable; the MongoDB integration test fails | Run MongoDB on hosts with an older kernel (CI's Java job is pinned to `ubuntu-24.04`; Docker Desktop's WSL2 kernel is unaffected) until a fixed MongoDB release ships |
+
 ## Routine operations
 
 | Task | How |
