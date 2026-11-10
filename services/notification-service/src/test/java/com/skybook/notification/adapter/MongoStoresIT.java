@@ -18,7 +18,7 @@ import com.mongodb.client.MongoClients;
 import com.skybook.notification.domain.AuditRecord;
 
 /**
- * The MongoDB adapters against a real MongoDB 8. Skipped without Docker.
+ * The MongoDB adapters against a real MongoDB 7.0 (the version in compose.yaml). Skipped without Docker.
  *
  * <p>A single standalone server, not Testcontainers' MongoDBContainer: the stores need no transactions, so the
  * replica-set initialisation that container performs adds start-up risk without testing anything here.
@@ -29,7 +29,7 @@ class MongoStoresIT {
     /** Everything the server printed, kept even when it fails to start (the container is gone by then). */
     private static final ToStringConsumer SERVER_LOG = new ToStringConsumer();
 
-    static final GenericContainer<?> MONGO = new GenericContainer<>("mongo:8.0.34")
+    static final GenericContainer<?> MONGO = new GenericContainer<>("mongo:7.0.45")
             .withExposedPorts(27017)
             .withLogConsumer(SERVER_LOG)
             // Same matcher as Testcontainers' own MongoDB module (case-insensitive).

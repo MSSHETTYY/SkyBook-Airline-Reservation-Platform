@@ -254,7 +254,8 @@ services:
   # -------------------------------------------------------- notification ----
   mongodb:
     <<: *defaults
-    image: mongo:8.0.34
+    # 7.0, not 8.x: MongoDB 8 refuses to start on Linux kernels >= 6.19 (SERVER-121912, see docs/runbook.md).
+    image: mongo:7.0.45
     profiles: [notification]
     mem_limit: 512m
     command: ["--wiredTigerCacheSizeGB", "0.25"]

@@ -132,7 +132,7 @@ PubSub+ Manager (copy to `q.notification`) once SMTP or the template issue is fi
 
 | Issue | Effect | Mitigation |
 |-------|--------|------------|
-| MongoDB 8 refuses to start on Linux kernel 6.19+ ([SERVER-121912](https://jira.mongodb.org/browse/SERVER-121912), TCMalloc rseq bug) | notification-service's audit store is unavailable; the MongoDB integration test fails | Run MongoDB on hosts with an older kernel (CI's Java job is pinned to `ubuntu-24.04`; Docker Desktop's WSL2 kernel is unaffected) until a fixed MongoDB release ships |
+| MongoDB 8.x refuses to start on Linux kernel 6.19+ ([SERVER-121912](https://jira.mongodb.org/browse/SERVER-121912), a TCMalloc rseq bug in 8.0+; no fixed release as of 2026-11-10) | The audit store would be down on modern hosts; GitHub's runners (Ubuntu 24.04 and 26) are affected | SkyBook runs **MongoDB 7.0** (compose.yaml and MongoStoresIT), which uses the older allocator and is supported until 2027. The notification stores use only basic documents and indexes. Move to 8.x once a release with the fix ships |
 
 ## Routine operations
 
