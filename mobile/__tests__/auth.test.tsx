@@ -16,10 +16,13 @@ const mockPromptAsync = jest.fn();
 let mockResponse: unknown = null;
 const mockExchange = jest.fn();
 const mockRefresh = jest.fn();
+// Stable objects across renders, like the real hooks return.
+const mockDiscovery = { tokenEndpoint: 'http://kc/token', authorizationEndpoint: 'http://kc/auth' };
+const mockRequest = { codeVerifier: 'verifier-123' };
 jest.mock('expo-auth-session', () => ({
   makeRedirectUri: () => 'skybook://auth',
-  useAutoDiscovery: () => ({ tokenEndpoint: 'http://kc/token', authorizationEndpoint: 'http://kc/auth' }),
-  useAuthRequest: () => [{ codeVerifier: 'verifier-123' }, mockResponse, mockPromptAsync],
+  useAutoDiscovery: () => mockDiscovery,
+  useAuthRequest: () => [mockRequest, mockResponse, mockPromptAsync],
   exchangeCodeAsync: (...args: unknown[]) => mockExchange(...args),
   refreshAsync: (...args: unknown[]) => mockRefresh(...args),
 }));
@@ -47,7 +50,7 @@ describe('AuthProvider', () => {
     mockResponse = { type: 'success', params: { code: 'code-1' } };
     mockExchange.mockResolvedValue({ accessToken: 'access-1', refreshToken: 'refresh-1', expiresIn: 300 });
 
-    render(<AuthProvider><Probe /></AuthProvider>);
+    await render(<AuthProvider><Probe /></AuthProvider>);
 
     expect(await screen.findByText('signed-in')).toBeTruthy();
     expect(mockExchange).toHaveBeenCalledWith(
@@ -60,15 +63,15 @@ describe('AuthProvider', () => {
   it('refreshes an expiring token, and signs out when refreshing fails', async () => {
     mockStore.set('skybook.tokens', JSON.stringify({ accessToken: 'old', refreshToken: 'r1', expiresAt: Date.now() + 1000 }));
     mockRefresh.mockResolvedValueOnce({ accessToken: 'new', expiresIn: 300 });
-    render(<AuthProvider><Probe /></AuthProvider>);
+    await render(<AuthProvider><Probe /></AuthProvider>);
     expect(await screen.findByText('signed-in')).toBeTruthy();
 
     expect(await act(() => mockProvider())).toBe('new');
     expect(JSON.parse(mockStore.get('skybook.tokens')!).refreshToken).toBe('r1');
 
     mockStore.set('skybook.tokens', JSON.stringify({ accessToken: 'x', refreshToken: 'r1', expiresAt: 0 }));
-    screen.unmount();
-    render(<AuthProvider><Probe /></AuthProvider>);
+    await screen.unmount();
+    await render(<AuthProvider><Probe /></AuthProvider>);
     await screen.findByText('signed-in');
     mockRefresh.mockRejectedValueOnce(new Error('invalid_grant'));
     expect(await act(() => mockProvider())).toBeUndefined();
@@ -81,18 +84,18 @@ describe('AuthProvider', () => {
       auth = useAuth();
       return null;
     }
-    render(<AuthProvider><Probe /><Capture /></AuthProvider>);
+    await render(<AuthProvider><Probe /><Capture /></AuthProvider>);
     expect(await screen.findByText('signed-out')).toBeTruthy();
     expect(await mockProvider()).toBeUndefined();
-    act(() => auth!.signIn());
+    await act(async () => auth!.signIn());
     expect(mockPromptAsync).toHaveBeenCalled();
     await act(() => auth!.signOut());
     expect(mockStore.has('skybook.tokens')).toBe(false);
     expect(toStored({ accessToken: 'a' }, 0).expiresAt).toBe(300_000);
   });
 
-  it('requires the mockProvider', () => {
+  it('requires the provider', async () => {
     jest.spyOn(console, 'error').mockImplementation(() => undefined);
-    expect(() => render(<Probe />)).toThrow('useAuth must be used inside AuthProvider');
+    await expect(render(<Probe />)).rejects.toThrow('useAuth must be used inside AuthProvider');
   });
 });

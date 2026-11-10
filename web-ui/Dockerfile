@@ -25,12 +25,12 @@ LABEL org.opencontainers.image.title="skybook-web-ui" \
       org.opencontainers.image.description="SkyBook customer and agent portal" \
       org.opencontainers.image.source="https://github.com/MSSHETTYY/SkyBook-Airline-Reservation-Platform"
 
-# Upstream defaults; override per environment.
+# Upstream defaults; override per environment. SKYBOOK_STRIPE_PUBLISHABLE_KEY is optional and is supplied
+# at run time only, never baked into the image (40-skybook-config.sh treats it as empty when unset).
 ENV SKYBOOK_GATEWAY_URL=http://api-gateway:8080 \
     SKYBOOK_OIDC_AUTHORITY=http://localhost:8180/realms/skybook \
     SKYBOOK_OIDC_ORIGIN=http://localhost:8180 \
-    SKYBOOK_OIDC_CLIENT_ID=skybook-web \
-    SKYBOOK_STRIPE_PUBLISHABLE_KEY=""
+    SKYBOOK_OIDC_CLIENT_ID=skybook-web
 
 COPY web-ui/docker/default.conf.template /etc/nginx/templates/default.conf.template
 COPY --chmod=755 web-ui/docker/40-skybook-config.sh /docker-entrypoint.d/40-skybook-config.sh

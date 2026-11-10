@@ -32,7 +32,7 @@ export default function MyBookingsScreen() {
         keyExtractor={(b) => b.bookingReference}
         onRefresh={() => void bookings.refetch()}
         refreshing={bookings.isRefetching}
-        ListEmptyComponent={bookings.data ? <Text style={styles.muted}>You have no bookings yet.</Text> : null}
+        ListEmptyComponent={bookings.data ? <Text style={styles.muted}>You have no bookings yet.</Text> : undefined}
         renderItem={({ item }) => (
           <Link href={`/bookings/${item.bookingReference}`} asChild>
             <Pressable

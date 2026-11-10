@@ -36,7 +36,7 @@ beforeEach(() => {
   requests.length = 0;
   mockAuth.signedIn = true;
   mockAuth.signIn.mockClear();
-  global.fetch = jest.fn(async (input: RequestInfo | URL, init: RequestInit = {}) => {
+  globalThis.fetch = jest.fn(async (input: RequestInfo | URL, init: RequestInit = {}) => {
     const url = String(input);
     requests.push({ url, init });
     for (const handler of handlers) {
@@ -90,14 +90,14 @@ describe('mobile journey', () => {
   it('validates the search, then lists offers per cabin from the v2 API', async () => {
     handlers.push((url) => (url.includes('/api/v2/flights') ? { status: 200, body: { items: [OFFER], page: 0, size: 30,
       totalElements: 1 } } : undefined));
-    renderRouter(routes, { initialUrl: '/' });
+    await renderRouter(routes, { initialUrl: '/' });
 
-    fireEvent.changeText(screen.getByLabelText('From'), 'D1');
-    fireEvent.press(screen.getByRole('button', { name: 'Search flights' }));
+    await fireEvent.changeText(screen.getByLabelText('From'), 'D1');
+    await fireEvent.press(screen.getByRole('button', { name: 'Search flights' }));
     expect(await screen.findByText('Use a 3-letter airport code, e.g. DXB')).toBeTruthy();
 
-    fireEvent.changeText(screen.getByLabelText('From'), 'dxb');
-    fireEvent.press(screen.getByRole('button', { name: 'Search flights' }));
+    await fireEvent.changeText(screen.getByLabelText('From'), 'dxb');
+    await fireEvent.press(screen.getByRole('button', { name: 'Search flights' }));
 
     expect(await screen.findByText(/SB101 · 2026-12-01 08:00 UTC/)).toBeTruthy();
     expect(screen.getByText('Economy: 10 left')).toBeTruthy();
@@ -111,9 +111,9 @@ describe('mobile journey', () => {
     mockAuth.signedIn = false;
     handlers.push((url) => (url.includes('/api/v2/flights') ? { status: 200, body: { items: [OFFER], totalElements: 1,
       page: 0, size: 30 } } : undefined));
-    renderRouter(routes, { initialUrl: '/results?origin=DXB&destination=LHR&date=2026-12-01&passengers=1' });
+    await renderRouter(routes, { initialUrl: '/results?origin=DXB&destination=LHR&date=2026-12-01&passengers=1' });
 
-    fireEvent.press(await screen.findByRole('button', { name: 'Book from USD 420.00' }));
+    await fireEvent.press(await screen.findByRole('button', { name: 'Book from USD 420.00' }));
     expect(mockAuth.signIn).toHaveBeenCalled();
   });
 
@@ -129,16 +129,16 @@ describe('mobile journey', () => {
       if (url.endsWith('/api/v1/bookings/K7QX2M')) return { status: 200, body: booking('PENDING_PAYMENT') };
       return undefined;
     });
-    renderRouter(routes, { initialUrl: '/book?flightId=7&cabin=ECONOMY&passengers=1&flightNumber=SB101' });
+    await renderRouter(routes, { initialUrl: '/book?flightId=7&cabin=ECONOMY&passengers=1&flightNumber=SB101' });
 
-    fireEvent.press(screen.getByRole('button', { name: 'Continue to payment' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Continue to payment' }));
     expect(await screen.findByText('Enter a valid contact email')).toBeTruthy();
 
-    fireEvent.changeText(screen.getByLabelText('Contact email'), 'ada@example.test');
-    fireEvent.changeText(screen.getByLabelText('Passenger 1 first name'), 'Ada');
-    fireEvent.changeText(screen.getByLabelText('Passenger 1 last name'), 'Lovelace');
-    fireEvent.changeText(screen.getByLabelText('Passenger 1 date of birth (YYYY-MM-DD)'), '1990-12-10');
-    fireEvent.press(screen.getByRole('button', { name: 'Continue to payment' }));
+    await fireEvent.changeText(screen.getByLabelText('Contact email'), 'ada@example.test');
+    await fireEvent.changeText(screen.getByLabelText('Passenger 1 first name'), 'Ada');
+    await fireEvent.changeText(screen.getByLabelText('Passenger 1 last name'), 'Lovelace');
+    await fireEvent.changeText(screen.getByLabelText('Passenger 1 date of birth (YYYY-MM-DD)'), '1990-12-10');
+    await fireEvent.press(screen.getByRole('button', { name: 'Continue to payment' }));
 
     expect(await screen.findByText('Booking K7QX2M')).toBeTruthy();
     const create = requests.find((r) => r.init.method === 'POST')!;
@@ -163,12 +163,12 @@ describe('mobile journey', () => {
       }
       return undefined;
     });
-    renderRouter(routes, { initialUrl: '/bookings/K7QX2M' });
+    await renderRouter(routes, { initialUrl: '/bookings/K7QX2M' });
 
-    fireEvent.press(await screen.findByRole('button', { name: 'Simulate declined card' }));
+    await fireEvent.press(await screen.findByRole('button', { name: 'Simulate declined card' }));
     expect(await screen.findByText('The card was declined (simulated). Try again.')).toBeTruthy();
 
-    fireEvent.press(screen.getByRole('button', { name: 'Pay USD 420.00 (test)' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Pay USD 420.00 (test)' }));
     expect(await screen.findByText('Confirmed')).toBeTruthy();
     expect(screen.getByText(/ticket 1761234567890/)).toBeTruthy();
   });
@@ -190,9 +190,9 @@ describe('mobile journey', () => {
     const alert = jest.spyOn(Alert, 'alert').mockImplementation((_title, _message, buttons) => {
       buttons?.find((b) => b.style === 'destructive')?.onPress?.();
     });
-    renderRouter(routes, { initialUrl: '/bookings/K7QX2M' });
+    await renderRouter(routes, { initialUrl: '/bookings/K7QX2M' });
 
-    fireEvent.press(await screen.findByRole('button', { name: 'Cancel booking' }));
+    await fireEvent.press(await screen.findByRole('button', { name: 'Cancel booking' }));
     expect(await screen.findByText('Cancelled')).toBeTruthy();
     expect(alert).toHaveBeenCalledWith('Cancel K7QX2M?', expect.stringContaining('USD 420.00 (100%)'), expect.any(Array));
     alert.mockRestore();
@@ -201,19 +201,19 @@ describe('mobile journey', () => {
   it('lists my bookings, or asks to sign in', async () => {
     handlers.push((url) => (url.includes('/api/v1/bookings?') ? { status: 200, body: { items: [booking('CONFIRMED')],
       page: 0, size: 50, totalElements: 1 } } : undefined));
-    renderRouter(routes, { initialUrl: '/bookings' });
+    await renderRouter(routes, { initialUrl: '/bookings' });
     expect(await screen.findByLabelText('Booking K7QX2M, Confirmed')).toBeTruthy();
 
     mockAuth.signedIn = false;
-    screen.unmount();
-    renderRouter(routes, { initialUrl: '/bookings' });
+    await screen.unmount();
+    await renderRouter(routes, { initialUrl: '/bookings' });
     expect(await screen.findByText('Sign in to see your bookings')).toBeTruthy();
   });
 
   it('shows problems from the API', async () => {
     handlers.push((url) => (url.includes('/api/v2/flights')
       ? { status: 503, body: { status: 503, title: 'Service unavailable', code: 'SERVICE_UNAVAILABLE' } } : undefined));
-    renderRouter(routes, { initialUrl: '/results?origin=DXB&destination=LHR&date=2026-12-01&passengers=1' });
+    await renderRouter(routes, { initialUrl: '/results?origin=DXB&destination=LHR&date=2026-12-01&passengers=1' });
     expect(await screen.findByText('SkyBook is temporarily unavailable. Please try again shortly.')).toBeTruthy();
   });
 });

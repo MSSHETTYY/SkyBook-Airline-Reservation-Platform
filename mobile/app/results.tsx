@@ -48,7 +48,7 @@ export default function ResultsScreen() {
       <FlatList
         data={offers.data?.items ?? []}
         keyExtractor={(offer) => String(offer.flightId)}
-        ListEmptyComponent={offers.data ? <Text style={styles.muted}>No flights on these dates.</Text> : null}
+        ListEmptyComponent={offers.data ? <Text style={styles.muted}>No flights on these dates.</Text> : undefined}
         renderItem={({ item }) => (
           <Card>
             <Text style={styles.subtitle}>{item.flightNumber} · {formatDateTime(item.departureTime)}</Text>

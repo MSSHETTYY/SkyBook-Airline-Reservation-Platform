@@ -9,7 +9,8 @@ metadata:
     {{- include "skybook.labels" (list . "smoke-test") | nindent 4 }}
   annotations:
     helm.sh/hook: test
-    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+    # Not deleted on success: `helm test --logs` reads the pod's log after it finishes.
+    helm.sh/hook-delete-policy: before-hook-creation
 spec:
   restartPolicy: Never
   automountServiceAccountToken: false

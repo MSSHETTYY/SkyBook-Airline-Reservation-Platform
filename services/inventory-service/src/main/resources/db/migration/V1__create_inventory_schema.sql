@@ -19,7 +19,8 @@ CREATE TABLE flight (
     CONSTRAINT ck_flight_status CHECK (status IN ('SCHEDULED', 'CANCELLED')),
     CONSTRAINT ck_flight_times CHECK (arrival_time > departure_time),
     CONSTRAINT ck_flight_route CHECK (origin <> destination),
-    CONSTRAINT uq_flight_number_departure UNIQUE (flight_number, departure_time),
+    -- Unique (flight_number, departure time) is created per database in V1_1 (db/migration-{vendor}):
+    -- Oracle cannot put a UNIQUE constraint on TIMESTAMP WITH TIME ZONE (ORA-02329).
     CONSTRAINT uq_flight_creation_key UNIQUE (creation_key)
 );
 

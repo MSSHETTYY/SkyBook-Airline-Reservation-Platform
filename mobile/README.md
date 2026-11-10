@@ -1,4 +1,4 @@
-# SkyBook mobile (Expo)
+# SkyBook mobile (Expo SDK 58)
 
 React Native app for customers: search flights (API v2, three-day window), sign in with Keycloak, book
 with automatically assigned seats, pay (test mode), track the booking live and cancel with a refund quote.

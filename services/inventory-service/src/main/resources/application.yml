@@ -32,6 +32,8 @@ spring:
           time_zone: UTC
   flyway:
     enabled: true
+    # Common migrations plus database-specific ones ({vendor} = oracle in production, h2 in fast tests).
+    locations: classpath:db/migration,classpath:db/migration-{vendor}
   security:
     oauth2:
       resourceserver:

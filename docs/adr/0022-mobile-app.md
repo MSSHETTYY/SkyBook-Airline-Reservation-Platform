@@ -17,11 +17,13 @@ paid accounts.
 
 ## Decision
 
-- **Expo SDK 54** (React Native 0.81, React 19.1) with **expo-router** (file-based routes, mirroring the
+- **Expo SDK 58** (React Native 0.88, React 19.3) with **expo-router** (file-based routes, mirroring the
   web pages).
-  - We use the newest established SDK rather than the latest major, following the same version policy as
-    the web UI.
-  - Versions are aligned with `expo install --check`.
+  - The app started on SDK 54, following the web UI's "previous major" policy. CI's Trivy gate then
+    flagged high-severity vulnerabilities in SDK 54's toolchain and in expo-router 6 (postcss,
+    image-size, query-string, decode-uri-component). The fixes exist only in SDK 58, so we upgraded.
+    **Security fixes override the version policy.**
+  - Versions are aligned with `expo install --check`; TypeScript 6 and Jest 30 come with the SDK.
 - **API-first again.** The `typescript-fetch` clients are generated from the same OpenAPI specs. Search uses
   **inventory API v2** (ADR-0020): a three-day window priced per cabin, which suits a small screen better
   than a single day.

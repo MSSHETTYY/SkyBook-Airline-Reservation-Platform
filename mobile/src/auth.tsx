@@ -63,6 +63,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [tokens, setTokens] = useState<StoredTokens | null>(null);
   const [ready, setReady] = useState(false);
   const tokensRef = useRef<StoredTokens | null>(null);
+  // An authorization code is single-use: exchange each one exactly once, whatever re-renders happen.
+  const exchangedCode = useRef<string | null>(null);
 
   const save = useCallback(async (next: StoredTokens | null) => {
     tokensRef.current = next;
@@ -84,6 +86,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (response?.type !== 'success' || !discovery || !request?.codeVerifier) return;
+    if (exchangedCode.current === response.params.code) return;
+    exchangedCode.current = response.params.code;
     void exchangeCodeAsync(
       {
         clientId: config.oidcClientId,

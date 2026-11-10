@@ -107,7 +107,7 @@ function ManualRefundForm({ booking }: { booking: Booking }) {
       .min(1, 'Enter an amount')
       .pipe(
         z.coerce
-          .number({ invalid_type_error: 'Enter a number' })
+          .number<string>({ error: 'Enter a number' })
           .positive('Must be greater than 0')
           .max(max, `At most ${formatMoney({ amount: max, currency })}`),
       ),
