@@ -87,7 +87,8 @@ Decisions are recorded in [docs/adr](docs/adr):
 [0018 delivery and Kubernetes](docs/adr/0018-delivery-pipeline-and-kubernetes.md) ·
 [0019 observability](docs/adr/0019-observability.md) ·
 [0020 API versioning](docs/adr/0020-api-versioning.md) ·
-[0021 booking assistant](docs/adr/0021-booking-assistant.md)
+[0021 booking assistant](docs/adr/0021-booking-assistant.md) ·
+[0022 mobile app](docs/adr/0022-mobile-app.md)
 
 More documentation:
 - [C4 diagrams and the saga sequence](docs/architecture/c4.md)
@@ -217,6 +218,11 @@ App containers send traces to Jaeger and ECS JSON logs to Loki. Grafana opens on
 overview and SLOs* dashboard, and log lines link to their traces. For services started from the IDE, set
 `MANAGEMENT_OPENTELEMETRY_TRACING_EXPORT_OTLP_ENDPOINT=http://localhost:4318/v1/traces`.
 
+### Mobile app (optional, Phase 8)
+
+An Expo (React Native) app in [mobile/](mobile/): search, sign in, book, pay (test mode), live status, cancel.
+See [mobile/README.md](mobile/README.md) for emulator and phone set-up.
+
 ### Booking assistant (optional, Phase 8)
 
 A read-only conversational assistant (Spring AI + a local Ollama model, ADR-0021). It searches flights,
@@ -258,7 +264,7 @@ The application services will use ports 8081-8085.
 | 5     | web-ui (React + TS, accessible), Vitest/RTL, Playwright + axe                              | Done    |
 | 6     | Dockerfiles, Helm on kind, full CI/CD (SonarQube, Trivy, Newman, GHCR, deploy)             | Done    |
 | 7     | OpenTelemetry, Prometheus/Grafana SLOs, Loki, k6 load test, chaos tests, final docs        | Done    |
-| 8     | Optional: Spring AI booking assistant (Ollama) - done; Expo mobile app - not started       | Partial |
+| 8     | Optional: Spring AI booking assistant (Ollama), Expo mobile app                            | Done    |
 
 ## Payments: Stripe test mode or the fake provider
 

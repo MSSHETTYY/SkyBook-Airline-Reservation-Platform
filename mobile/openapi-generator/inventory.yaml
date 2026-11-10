@@ -1,0 +1,8 @@
+generatorName: typescript-fetch
+inputSpec: ../api/inventory/v2/inventory-api.yaml
+outputDir: src/api/generated/inventory
+additionalProperties:
+  supportsES6: true
+  useSingleRequestParameter: true
+  stringEnums: true
+  enumPropertyNaming: original

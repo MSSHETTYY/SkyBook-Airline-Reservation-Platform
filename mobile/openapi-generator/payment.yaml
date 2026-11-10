@@ -1,0 +1,8 @@
+generatorName: typescript-fetch
+inputSpec: ../api/payment/v1/payment-api.yaml
+outputDir: src/api/generated/payment
+additionalProperties:
+  supportsES6: true
+  useSingleRequestParameter: true
+  stringEnums: true
+  enumPropertyNaming: original

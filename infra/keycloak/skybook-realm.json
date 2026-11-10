@@ -15,17 +15,35 @@
   "passwordPolicy": "length(10) and upperCase(1) and lowerCase(1) and digits(1) and notUsername",
   "roles": {
     "realm": [
-      { "name": "CUSTOMER", "description": "Books and manages own bookings" },
-      { "name": "AGENT", "description": "Services any booking, views inventory" },
-      { "name": "ADMIN", "description": "Agent rights plus flight management and manual refunds" },
-      { "name": "SERVICE", "description": "Machine identity for service-to-service calls" }
+      {
+        "name": "CUSTOMER",
+        "description": "Books and manages own bookings"
+      },
+      {
+        "name": "AGENT",
+        "description": "Services any booking, views inventory"
+      },
+      {
+        "name": "ADMIN",
+        "description": "Agent rights plus flight management and manual refunds"
+      },
+      {
+        "name": "SERVICE",
+        "description": "Machine identity for service-to-service calls"
+      }
     ]
   },
   "defaultRole": {
     "name": "default-roles-skybook",
     "description": "Self-registered users become customers",
     "composite": true,
-    "composites": { "realm": ["offline_access", "uma_authorization", "CUSTOMER"] }
+    "composites": {
+      "realm": [
+        "offline_access",
+        "uma_authorization",
+        "CUSTOMER"
+      ]
+    }
   },
   "clients": [
     {
@@ -39,11 +57,39 @@
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false,
-      "redirectUris": ["http://localhost:5173/*", "http://localhost:8088/*", "http://localhost/*"],
-      "webOrigins": ["http://localhost:5173", "http://localhost:8088", "http://localhost"],
+      "redirectUris": [
+        "http://localhost:5173/*",
+        "http://localhost:8088/*",
+        "http://localhost/*"
+      ],
+      "webOrigins": [
+        "http://localhost:5173",
+        "http://localhost:8088",
+        "http://localhost"
+      ],
       "attributes": {
         "pkce.code.challenge.method": "S256",
         "post.logout.redirect.uris": "http://localhost:5173/*##http://localhost:8088/*##http://localhost/*"
+      }
+    },
+    {
+      "clientId": "skybook-mobile",
+      "name": "SkyBook mobile app (Expo)",
+      "description": "Public client: authorization code flow with PKCE (S256), custom URI scheme redirect, no secret",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "skybook://*",
+        "exp://*"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "skybook://*"
       }
     },
     {
@@ -78,8 +124,16 @@
       "firstName": "Casey",
       "lastName": "Customer",
       "enabled": true,
-      "credentials": [{ "type": "password", "value": "Customer123!", "temporary": false }],
-      "realmRoles": ["default-roles-skybook"]
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Customer123!",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "default-roles-skybook"
+      ]
     },
     {
       "username": "agent@skybook.test",
@@ -88,8 +142,16 @@
       "firstName": "Avery",
       "lastName": "Agent",
       "enabled": true,
-      "credentials": [{ "type": "password", "value": "Agent12345!", "temporary": false }],
-      "realmRoles": ["AGENT"]
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Agent12345!",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "AGENT"
+      ]
     },
     {
       "username": "admin@skybook.test",
@@ -98,14 +160,25 @@
       "firstName": "Alex",
       "lastName": "Admin",
       "enabled": true,
-      "credentials": [{ "type": "password", "value": "Admin12345!", "temporary": false }],
-      "realmRoles": ["ADMIN", "AGENT"]
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Admin12345!",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "ADMIN",
+        "AGENT"
+      ]
     },
     {
       "username": "service-account-booking-service",
       "enabled": true,
       "serviceAccountClientId": "booking-service",
-      "realmRoles": ["SERVICE"]
+      "realmRoles": [
+        "SERVICE"
+      ]
     }
   ]
 }

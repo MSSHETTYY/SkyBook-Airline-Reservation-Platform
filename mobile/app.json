@@ -1,0 +1,18 @@
+{
+  "expo": {
+    "name": "SkyBook",
+    "slug": "skybook",
+    "scheme": "skybook",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "plugins": ["expo-router", "expo-secure-store"],
+    "ios": { "bundleIdentifier": "com.skybook.mobile", "supportsTablet": true },
+    "android": { "package": "com.skybook.mobile" },
+    "extra": {
+      "apiBaseUrl": "http://10.0.2.2:8080",
+      "oidcIssuer": "http://10.0.2.2:8180/realms/skybook",
+      "oidcClientId": "skybook-mobile"
+    }
+  }
+}

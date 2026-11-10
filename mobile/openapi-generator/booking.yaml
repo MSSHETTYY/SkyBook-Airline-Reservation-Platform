@@ -1,0 +1,8 @@
+generatorName: typescript-fetch
+inputSpec: ../api/booking/v1/booking-api.yaml
+outputDir: src/api/generated/booking
+additionalProperties:
+  supportsES6: true
+  useSingleRequestParameter: true
+  stringEnums: true
+  enumPropertyNaming: original
