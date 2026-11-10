@@ -23,8 +23,11 @@ def failing_tests(directories):
                 for kind in ("failure", "error"):
                     node = case.find(kind)
                     if node is not None:
-                        first_lines = " | ".join((node.text or "").strip().splitlines()[:3])
-                        yield f"{case.get('classname')}.{case.get('name')}", f"{node.get('message') or ''} {first_lines}"
+                        trace = (node.text or "").strip().splitlines()
+                        causes = [line.strip() for line in trace if line.strip().startswith("Caused by:")]
+                        # The deepest cause is what a "Failed to load ApplicationContext" really means.
+                        detail = causes[-1] if causes else " | ".join(trace[:3])
+                        yield f"{case.get('classname')}.{case.get('name')}", detail
 
 
 def main(argv):

@@ -19,7 +19,7 @@ spec:
   ingress:
     {{- if $svc.allowFrom }}
     - ports:
-        - port: http
+        - port: {{ $svc.port }}
       from:
         {{- range $caller := $svc.allowFrom }}
         {{- if eq $caller "ingress" }}
@@ -38,7 +38,7 @@ spec:
     {{- end }}
     {{- if $svc.java }}
     - ports:
-        - port: management
+        - port: {{ $svc.managementPort }}
       from:
         - namespaceSelector:
             matchLabels:

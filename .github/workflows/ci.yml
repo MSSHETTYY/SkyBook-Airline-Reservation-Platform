@@ -188,7 +188,13 @@ jobs:
           ignore-unfixed: true
           severity: CRITICAL,HIGH
           exit-code: "1"
+          format: json
+          output: trivy-gate.json
           trivy-config: trivy.yaml
+
+      - name: Annotate Trivy findings
+        if: failure()
+        run: python3 .github/scripts/annotate-trivy.py trivy-gate.json
 
   helm:
     name: Helm - lint, render, Kubernetes schema validation
@@ -352,6 +358,7 @@ jobs:
           kubectl -n skybook describe pods
           kubectl -n skybook logs -l app.kubernetes.io/part-of=skybook --tail=200 --all-containers
           # Surface the essentials as annotations (visible on the run page without opening logs).
+          kubectl -n skybook logs skybook-smoke-test 2>&1 | tail -n 5 | sed 's/^/::error title=smoke test::/'
           kubectl -n skybook get pods --no-headers | while read -r name ready status rest; do
             echo "::error title=pod $name::$ready $status"
             kubectl -n skybook logs "$name" --all-containers --tail=8 2>&1 | tr -s '[:space:]' ' ' | cut -c1-900 | sed 's/^/::error title=log '"$name"'::/'

@@ -37,10 +37,14 @@ public class Flight {
     @Column(name = "flight_number", nullable = false)
     private String flightNumber;
 
-    @Column(nullable = false)
+    // Fixed-length CHAR(3) in the schema; Hibernate 7 does not treat CHAR as equivalent to VARCHAR.
+    @JdbcTypeCode(SqlTypes.CHAR)
+    @Column(nullable = false, length = 3)
     private String origin;
 
-    @Column(nullable = false)
+    // Fixed-length CHAR(3) in the schema; Hibernate 7 does not treat CHAR as equivalent to VARCHAR.
+    @JdbcTypeCode(SqlTypes.CHAR)
+    @Column(nullable = false, length = 3)
     private String destination;
 
     @Column(name = "departure_time", nullable = false)
@@ -55,7 +59,9 @@ public class Flight {
     @Column(name = "base_fare_amount", nullable = false)
     private BigDecimal baseFareAmount;
 
-    @Column(nullable = false)
+    // Fixed-length CHAR(3) in the schema; Hibernate 7 does not treat CHAR as equivalent to VARCHAR.
+    @JdbcTypeCode(SqlTypes.CHAR)
+    @Column(nullable = false, length = 3)
     private String currency;
 
     @Enumerated(EnumType.STRING)

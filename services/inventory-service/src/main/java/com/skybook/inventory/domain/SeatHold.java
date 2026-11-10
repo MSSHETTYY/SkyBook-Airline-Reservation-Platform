@@ -61,7 +61,9 @@ public class SeatHold {
     @Column(name = "total_amount", nullable = false)
     private BigDecimal totalAmount;
 
-    @Column(nullable = false)
+    // Fixed-length CHAR(3) in the schema; Hibernate 7 does not treat CHAR as equivalent to VARCHAR.
+    @JdbcTypeCode(SqlTypes.CHAR)
+    @Column(nullable = false, length = 3)
     private String currency;
 
     @Column(name = "idempotency_key", nullable = false)
