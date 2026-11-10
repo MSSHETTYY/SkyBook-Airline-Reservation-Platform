@@ -21,7 +21,7 @@ jobs:
     env:
       PROFILES: --profile core --profile messaging --profile auth --profile notification --profile partners --profile apps
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Start infrastructure
         run: |
@@ -54,7 +54,7 @@ jobs:
 
       - name: Upload results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: newman-results
           path: newman-results.xml
