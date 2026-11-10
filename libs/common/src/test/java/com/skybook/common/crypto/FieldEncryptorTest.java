@@ -29,7 +29,8 @@ class FieldEncryptorTest {
 
         String ciphertext = v1.encrypt(secret);
 
-        assertThat(ciphertext).startsWith("v1:").doesNotContain("Zo", "example");
+        // Fragments long enough that random Base64 cannot contain them by chance ("Zo" alone did, ~2% of runs).
+        assertThat(ciphertext).startsWith("v1:").doesNotContain("Zoë", "Ångström", "example.test");
         assertThat(v1.decrypt(ciphertext)).isEqualTo(secret);
     }
 
