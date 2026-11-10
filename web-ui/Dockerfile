@@ -20,7 +20,7 @@ COPY --from=api-clients /work/web-ui/src/api/generated ./src/api/generated
 RUN npm run build
 
 # 3. Static files served by unprivileged nginx (runs as uid 101, listens on 8080, read-only friendly).
-FROM nginxinc/nginx-unprivileged:1.29-alpine
+FROM nginxinc/nginx-unprivileged:1.31-alpine
 LABEL org.opencontainers.image.title="skybook-web-ui" \
       org.opencontainers.image.description="SkyBook customer and agent portal" \
       org.opencontainers.image.source="https://github.com/MSSHETTYY/SkyBook-Airline-Reservation-Platform"
