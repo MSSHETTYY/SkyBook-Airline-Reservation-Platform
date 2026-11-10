@@ -11,7 +11,7 @@ RUN java -jar /opt/openapi-generator/modules/openapi-generator-cli/target/openap
       batch --clean openapi-generator/inventory.yaml openapi-generator/booking.yaml openapi-generator/payment.yaml
 
 # 2. Type-check, test-free production build (tests run in CI before the image is built).
-FROM node:24-alpine AS build
+FROM node:26-alpine AS build
 WORKDIR /app
 COPY web-ui/package.json web-ui/package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci --ignore-scripts --no-audit --no-fund
